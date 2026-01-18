@@ -4,7 +4,7 @@
 
 ## 1. 准备工作
 
-请在项目根目录下，克隆以下两个必要的仓库代码：
+请在项目根目录下，下载模型文件，以及克隆以下三个必要的仓库代码：
 
 ```powershell
 # 1. 下载 FunASR-Nano 模型 (需安装 modelscope)
@@ -77,11 +77,13 @@ python 03_Inference.py
     3.  通过 "Pure Embedding" 模式，将音频特征直接注入 LLM 生成文本。
 *   **配置**：可以在脚本中修改 `test_audio = './input.mp3'` 来测试不同的音频文件。
 
+推理效果，可以见 `04_Inference.ipynb` 中的输出。
+
 ## 目录结构说明
 
 执行完上述步骤后，`model-gguf` 文件夹将包含完整的推理所需文件：
 
-*   `FunASR_Nano_Encoder.onnx` / `.data` : 音频编码器
+*   `FunASR_Nano_Encoder.onnx` : 音频编码器
 *   `FunASR_Nano_Decoder_Embed.onnx` : 文本 Embedder
 *   `qwen3-0.6b-asr.gguf` : LLM 主模型
 *   `Qwen3-0.6B/` : 分词器文件 (Tokenizer)
