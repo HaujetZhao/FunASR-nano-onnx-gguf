@@ -93,4 +93,7 @@ python 03_Inference.py
 
 fp16 的 LLM Decoder 用 llama.cpp 在 CPU 上跑，速度可以达到 38tokens/s
 
-如果启用了 vulkan 编译 llama-cpp-python，会发现无法运行，当下我还没有找到在 GPU 上运行的方法，需要显示用 `$env:VK_ICD_FILENAMES="none"`  环境变量禁止 GPU。
+如果启用了 vulkan 编译 llama-cpp-python，跑 CPU 的版本的脚本的话，需要显示用 `$env:VK_ICD_FILENAMES="none"`  环境变量禁止 Vulkan。
+
+在 GPU 上跑，我的机器实测一次最多注入8个 embedding。
+
