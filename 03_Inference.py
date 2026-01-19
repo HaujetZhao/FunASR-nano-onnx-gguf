@@ -10,6 +10,8 @@ import sys
 import os
 from pydub import AudioSegment
 from transformers import AutoTokenizer
+import pickle
+
 from llama_cpp import (
     Llama,
     llama_batch_init,
@@ -326,6 +328,13 @@ def main():
             
             final_embedding = np.concatenate([prefix_emb, audio_features_sq, suffix_emb], axis=0)
             
+            # Save to pickle
+            os.makedirs("pickles", exist_ok=True)
+            pkl_path = f"pickles/embedding_slice_{slice_start}_{slice_end}.pkl"
+            with open(pkl_path, "wb") as f:
+                pickle.dump(final_embedding, f)
+            print(f"Saved fused embedding to {pkl_path}")
+
             print(f"\n=== 推理切片 [{slice_start}:{slice_end}] ===")
             print(f"Final Input Shape: {final_embedding.shape}")
             
