@@ -1,4 +1,8 @@
 
+
+import os
+os.environ['VK_ICD_FILENAMES'] = 'none'   # 禁用 Vulkan，以确保只使用 CPU
+
 import ctypes
 import numpy as np
 import logging
@@ -253,8 +257,8 @@ def main():
     
     # 4. 准备 Prefix 和 Suffix 的 Embeddings
     # 必须启用 special tokens 才能正确编码 <|im_start|> 等
-    prefix_tokens = tokenizer.encode(PREFIX_PROMPT, add_special_tokens=False) 
-    suffix_tokens = tokenizer.encode(SUFFIX_PROMPT, add_special_tokens=False)
+    prefix_tokens = tokenizer.encode(PREFIX_PROMPT, add_special_tokens=True) 
+    suffix_tokens = tokenizer.encode(SUFFIX_PROMPT, add_special_tokens=True)
     
     prefix_emb = all_embeddings[prefix_tokens]
     suffix_emb = all_embeddings[suffix_tokens]
@@ -329,11 +333,11 @@ def main():
             final_embedding = np.concatenate([prefix_emb, audio_features_sq, suffix_emb], axis=0)
             
             # Save to pickle
-            os.makedirs("pickles", exist_ok=True)
-            pkl_path = f"pickles/embedding_slice_{slice_start}_{slice_end}.pkl"
-            with open(pkl_path, "wb") as f:
-                pickle.dump(final_embedding, f)
-            print(f"Saved fused embedding to {pkl_path}")
+            # os.makedirs("pickles", exist_ok=True)
+            # pkl_path = f"pickles/embedding_slice_{slice_start}_{slice_end}.pkl"
+            # with open(pkl_path, "wb") as f:
+            #     pickle.dump(final_embedding, f)
+            # print(f"Saved fused embedding to {pkl_path}")
 
             print(f"\n=== 推理切片 [{slice_start}:{slice_end}] ===")
             print(f"Final Input Shape: {final_embedding.shape}")
