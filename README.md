@@ -91,8 +91,6 @@ python 03_Inference.py
 
 ## 速度说明
 
-fp16 的 LLM Decoder 用 llama.cpp 在 CPU 上跑，速度可以达到 38tokens/s
-
 如果启用了 vulkan 编译 llama-cpp-python，跑 CPU 的版本的脚本的话，需要显示用 `$env:VK_ICD_FILENAMES="none"`  环境变量禁止 Vulkan。
 
 在 GPU 上跑，我的机器实测一次最多注入8个 embedding，限制到了注入 embedding 的速度，似乎是 ubatch 有限，但这是当前版本的 llama-cpp-python 的限制，实际上 llama.cpp 跑到 512 的 ubatch 都能跑，
@@ -107,7 +105,7 @@ FP16 模型 RTX 5050 Vulkan 解码速度 `03_Inference_gpu.py`：
 [*] Generation Speed: 134.18 tokens/s
 ```
 
-FP16 模型 CPU 解码速度 `03_Inference.py`：
+FP16 模型 CPU 解码速度 `03_Inference_cpu.py`：
 ```
 === 推理切片 [0:160000] ===
 Final Input Shape: (155, 1024)
@@ -121,4 +119,21 @@ init: embeddings required but some input tokens were not marked as outputs -> ov
 
 
 2026-01-20 08:37:06,647 - INFO - 解码速度: 33.27 tokens/s (45 tokens in 1.35s)
+```
+
+
+INT8 模型 CPU 解码速度 `03_Inference_cpu_int8.py`：
+```
+=== 推理切片 [0:160000] ===
+Final Input Shape: (155, 1024)
+2026-01-20 08:44:50,934 - INFO - 注入 Total Embeddings Shape: (155, 1024)
+2026-01-20 08:44:50,954 - INFO - 正在注入融合 Embedding...
+init: embeddings required but some input tokens were not marked as outputs -> overriding
+2026-01-20 08:44:51,937 - INFO - 开始生成文本 (最大 1024 tokens)...
+
+，星期日，欢迎收看一千零四期誓言消息，请静静介绍话题。去年十月十九日，九百六十七期节目说到委内瑞拉
+问题，我们回顾一下你当时的评。
+
+
+2026-01-20 08:44:52,792 - INFO - 解码速度: 52.64 tokens/s (45 tokens in 0.85s)
 ```

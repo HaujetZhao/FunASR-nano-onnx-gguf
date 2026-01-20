@@ -1,3 +1,5 @@
+import os
+os.environ['VK_ICD_FILENAMES'] = 'none'   # 禁用 Vulkan，以确保只使用 CPU
 
 import ctypes
 import numpy as np

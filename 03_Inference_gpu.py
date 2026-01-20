@@ -1,3 +1,9 @@
+# pypi 版本的 llama-cpp-python 默认没有 vulkan
+# 要想支持 vulkan 需要从源码编译 llama-cpp-python
+# 电脑上要先装上 vulkan SDK
+# 通过设置环境变量 CMAKE_ARGS = "-DGGML_VULKAN=ON"  启用 vulkan
+# 再编译 llama-cpp-python
+
 
 import ctypes
 import numpy as np
