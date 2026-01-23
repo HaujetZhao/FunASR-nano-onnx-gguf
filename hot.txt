@@ -1,7 +1,7 @@
 # 热词文件单行一个
 
 睡前消息
-督公
+督工
 
 Claude
 Claude Code

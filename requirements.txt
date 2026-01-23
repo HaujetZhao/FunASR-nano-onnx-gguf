@@ -8,6 +8,7 @@ gguf
 
 rich
 watchdog
+pypinyin
 
 # ==================== 模型导出依赖 ====================
 
@@ -15,6 +16,8 @@ torch
 torchaudio 
 transformers 
 onnxruntime 
+onnxscript
+sentencepiece
 modelscope
 
 # ==================== 注意事项 ====================

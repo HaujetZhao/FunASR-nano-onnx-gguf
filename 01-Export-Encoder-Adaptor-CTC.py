@@ -32,7 +32,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Import local model dependencies (standalone - no rknn folder needed)
-import export_torch_model as torch_model
+import fun_asr_gguf.export_torch_model as torch_model
 
 # =========================================================================
 # Configuration
@@ -394,7 +394,7 @@ def main():
 
     with torch.no_grad():
         print(f"\n[1/4] Exporting Dual-Output Encoder (Dynamo=True)...")
-        enc_wrapper = EncoderExportWrapper(hybrid, custom_stft, lfr_m=LFR_M, lfr_n=LFR_N)
+        enc_wrapper = EncoderExportWrapper(hybrid, custom_stft, lfr_m=LFR_M, lfr_n=LFR_N).eval()
         
         audio = torch.randn(1, 1, SAMPLE_RATE * 1, dtype=torch.float32) 
         
@@ -420,7 +420,7 @@ def main():
             try: os.remove(data_file)
             except: pass
 
-        ctc_wrapper = CTCHeadExportWrapper(hybrid) # Using unified wrapper logic
+        ctc_wrapper = CTCHeadExportWrapper(hybrid).eval() # Using unified wrapper logic
         dummy_enc = torch.randn(1, 100, 512)
         
         torch.onnx.export(

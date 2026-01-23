@@ -22,13 +22,13 @@
 导出模型需要：
 
 ```bash
-pip install torch torchaudio transformers onnxruntime modelscope
+pip install torch torchaudio transformers onnxruntime modelscope onnxscript sentencepiece
 ```
 
 推理需要：
 
 ```bash
-pip install onnx onnxruntime numpy pydub gguf
+pip install onnx onnxruntime numpy pydub gguf watchdog rich pypinyin
 ```
 
 >  `pydub` 用于音频格式转换，需要系统安装 [ffmpeg](https://ffmpeg.org/download.html)
@@ -71,6 +71,9 @@ engine = create_asr_engine(
     ctc_onnx_path="model/Fun-ASR-Nano-CTC.int8.onnx",
     decoder_gguf_path="model/Fun-ASR-Nano-Decoder.q8_0.gguf",
     tokens_path="model/tokens.txt",
+    hotwords_path="hot.txt", # 可选：热词文件路径，支持运行期间实时修改
+    similar_threshold=0.6,   # 可选：热词模糊匹配阈值，默认 0.6
+    max_hotwords=10,         # 可选：最多提供给 LLM 的热词数量，默认 10
 )
 engine.initialize()
 
@@ -130,10 +133,10 @@ print(result.text)
    - INT8：~200MB 内存（但不推荐，准确率下降明显）
  - **CTC Decoder**：内存占用可忽略（几十 MB）
  - **LLM Decoder**（约 600M 参数）
-   - INT8：~600MB 内存或显存
+   - INT8：~1.2GB 内存或显存（显卡内会用fp16进行计算，但比原生fp16要快）
    - FP16：~1.2GB 内存或显存
 
- **总内存占用**（推荐 FP32 Encoder + INT8 Decoder）：约 **1.4GB**（CPU 内存或 GPU 显存）
+ **总内存占用**（推荐 FP32 Encoder + INT8 Decoder）：约 **2GB**（CPU 内存或 GPU 显存）
 
 ---
 
@@ -149,7 +152,9 @@ engine = create_asr_engine(
     ctc_onnx_path="model/Fun-ASR-Nano-CTC.int8.onnx",
     decoder_gguf_path="model/Fun-ASR-Nano-Decoder.q8_0.gguf",
     tokens_path="model/tokens.txt",
-    hotwords_path="hot.txt",  # 可选
+    hotwords_path="hot.txt",  # 可选：热词文件路径
+    similar_threshold=0.6,    # 可选：热词匹配阈值
+    max_hotwords=10,          # 可选：最多召回热词数
 )
 engine.initialize()
 
@@ -173,22 +178,24 @@ result = engine.transcribe(
 
 ### 热词配置
 
-创建 `hot.txt` 文件：
+创建 `hot.txt` 文件（每行一个热词）：
 
-```
+```text
 督工
 静静
 深度学习
 神经网络
 ```
 
-热词可以有几千条、上万条，识别时只会通过 CTC Decoder 的粗结果，通过音素匹配，得到相似度0.6以上的前十条，作为上下文提供给 LLM Decoder
+**特性：**
+1. **实时更新**：识别程序运行期间，你可以随时修改 `hot.txt` 并保存，程序会通过 `watchdog` 自动更新内存中的热词库，无需重启。
+2. **模糊召回**：热词可以有几千条、上万条，程序会根据 CTC 的粗识别结果进行音素级别的模糊匹配，找出相似度在 `similar_threshold` 以上的热词，并取前 `max_hotwords` 条（默认10条）作为上下文提供给 LLM 纠错。
 
 ---
 
 ## 性能参考
 
-以下是在小新Pro16GT（U9-258H + RTX5050）笔记本上的效果，60秒的睡前消息音频，转录用时2.55秒。
+以下是在小新Pro16GT（U9-258H + RTX5050）笔记本上的效果，60秒的睡前消息音频，转录用时2.59秒。
 
 需要注意的是，**LLM Decoder 所需时间取决于吐出文字的数量，不适合用 RTF 描述**，睡前消息音频的文字密度非常高，短短60秒就有350个字，但这段音频的速度可以作为下限参考，即 RTF 最慢也不会慢过 0.04
 
@@ -203,7 +210,7 @@ result = engine.transcribe(
     音频长度: 60.00s
 
 [2] 音频编码...
-    耗时: 934.58ms
+    耗时: 934.21ms
 
 [3] CTC 解码...
     CTC: 大家好二零二六年一月十一日星期日欢迎收看一千零四起事间消息请静静介绍话题去年十月十九
@@ -214,50 +221,47 @@ result = engine.transcribe(
 面战争入侵的美国军队总数是以两百站在韦伦瑞拉领土上的时间不超过一个小时算是地面战争或者全面进 
 攻实在有点勉强当然美国动用总力量并不小一五十架先进飞机加上经年累月不止的情报网络这放在东亚或 
 者欧洲也不是一支很小的力量用到美国的西半球主场压倒韦伦瑞拉的军队那是必然的
-    热词: ['督工', '睡前消息']
-    耗时: 108.23ms
+    热词: ['睡前消息', '督工']
+    耗时: 133.76ms
 
 [4] 准备 Prompt...
-    Prefix: 73 tokens
+--------------- Prefix Prompt ---------------
+<|im_start|>system
+You are a helpful assistant.<|im_end|>
+<|im_start|>user
+请结合上下文信息，更加准确地完成语音转写任务。
+
+
+**上下文信息：**这是1004期睡前消息节目，主持人叫督工，助理叫静静
+
+
+热词列表：[睡前消息, 督工]
+语音转写：
+----------------------------------------
+    Prefix: 72 tokens
     Suffix: 5 tokens
 
 [5] LLM 解码...
 ======================================================================
-大家好，2026年1月11日星期日，欢迎收看1004期《睡前消息》。请静静介绍话题。去年10月19日967期节
-目说到委内瑞拉问题，我们回顾一下你当时的评论。无论是从集结的兵力来看，还是从动机来看，特朗普政府并不打算对委内瑞拉政权发动全面的进攻，最多是发动象 
-征性的轰炸进行政治投机。在诺贝尔和平奖发给了委内瑞拉反对派之后，美国军队进攻的概率进一步降低。现在美国突袭委内瑞拉，抓走了总统马杜罗。督工，你怎么 
-看待两个月之前的判断？当初的判断不变，美国对于委内瑞拉的突袭性质依然是政治投机，不能算是地面战争。入侵的美国军队总数是以200占在委内瑞拉领土上的时间
-不超过一个小时，算是地面战争或者全面进攻，实在有点勉强。当然，美国东用总力量并不小，150架先进飞机，加上经年累月部署的情报网络，这放在东亚或者欧洲也
-不是一只很小的力量，用到美国的西半球主场压倒委内瑞拉的军队那是必然的。
+大家好，2026年1月11日星期日，欢迎收看1004期《睡前消息》。请静静介绍话题。去年10月19日967期节目说到委内瑞拉问题，我们回顾一下你当时的评论。无论是从集结的兵力来看，还是从动机来看，特朗普政府并不打算对委内瑞拉政权发动全面的进攻，最多是发动象征性的轰炸进行政治投机。在诺贝尔和平奖发给了委内瑞拉反对派之后，美国军队进攻的概率进一步降低。现在美国突袭委内瑞拉，抓走了总统马杜罗。杜工，你怎么看待两个月之前的判断？当初的判断不变，美国对于委内瑞拉的突袭性质依然是政治投机，不能算是地面战争。入侵的美国军队总数是以200占在委内瑞拉领土上的时间不超过一个小时，算是地面战争或者全面进攻，实在有强。当然，美国动用总力量并不小，150架先进飞机，加上经年累月部署的情报网络，这放在东亚或者欧洲也不是一只很小的力量，用到美国的西半球主场压倒委内瑞拉的军队那是必然的。
 ======================================================================
 
 [6] 时间戳对齐
-    对齐耗时: 118.61ms
-    对齐结果 (前10个字符):
-      1.23s: 大
-      1.35s: 家
-      1.47s: 好
-      1.62s: ，
-      1.77s: 2
-      1.89s: 0
-      2.01s: 2
-      2.13s: 6
-      2.25s: 年
-      2.43s: 1
-      ...
+    对齐耗时: 118.78ms
+    结果预览: 大(1.23s) 家(1.35s) 好(1.47s) ，(1.62s) 2(1.77s) 0(1.89s) 2(2.01s) 6(2.13s) 年(2.25s) 1(2.43s) ...
 
 [统计]
   音频长度:  60.00s
-  Decoder输入:   4554 tokens/s (总: 204, prefix:73, audio:126, suffix:5)
-  Decoder输出:    219 tokens/s (总: 256)
+  Decoder输入:   6994 tokens/s (总: 203, prefix:72, audio:126, suffix:5)
+  Decoder输出:    213 tokens/s (总: 256)
 
 [转录耗时]
-  - 音频编码：   935ms
-  - CTC解码：    108ms
-  - LLM读取：     45ms
-  - LLM生成：   1168ms
+  - 音频编码：   934ms
+  - CTC解码：    134ms
+  - LLM读取：     29ms
+  - LLM生成：   1202ms
   - 时间戳对齐:  119ms
-  - 总耗时：    2.55s
+  - 总耗时：    2.59s
 ```
 
 同一段音频，纯 CPU 推理速度：
@@ -265,16 +269,16 @@ result = engine.transcribe(
 ```
 [统计]
   音频长度:  60.00s
-  Decoder输入:    311 tokens/s (总: 204, prefix:73, audio:126, suffix:5)
-  Decoder输出:     49 tokens/s (总: 252)
+  Decoder输入:    318 tokens/s (总: 203, prefix:72, audio:126, suffix:5)
+  Decoder输出:     51 tokens/s (总: 255)
 
 [转录耗时]
-  - 音频编码：  1011ms
-  - CTC解码：    117ms
-  - LLM读取：    657ms
-  - LLM生成：   5163ms
-  - 时间戳对齐:  136ms
-  - 总耗时：    7.26s
+  - 音频编码：   922ms
+  - CTC解码：    145ms
+  - LLM读取：    637ms
+  - LLM生成：   5016ms
+  - 时间戳对齐:  149ms
+  - 总耗时：    7.04s
 ```
 
 ---

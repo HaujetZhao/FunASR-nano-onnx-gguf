@@ -68,7 +68,9 @@ def main():
         ctc_onnx_path=ctc_onnx_path,
         decoder_gguf_path=decoder_gguf_path,
         tokens_path=tokens_path,
-        hotwords_path=hotwords_path,
+        hotwords_path=hotwords_path, 
+        similar_threshold=0.6, 
+        max_hotwords=10, 
         enable_ctc=enable_ctc,
         verbose=verbose,
     )

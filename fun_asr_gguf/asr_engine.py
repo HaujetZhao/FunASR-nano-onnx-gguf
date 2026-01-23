@@ -15,6 +15,8 @@ import wave
 import numpy as np
 import time
 from typing import Optional, List, Tuple
+from pathlib import Path
+
 
 from . import nano_llama
 from .nano_ctc import load_ctc_tokens, decode_ctc, align_timestamps
@@ -60,6 +62,8 @@ class FunASREngine:
         enable_ctc: bool = True,
         n_predict: int = 512,
         n_threads: int = None,
+        similar_threshold: float = 0.6,
+        max_hotwords: int = 10,
     ):
         """
         初始化 ASR 引擎
@@ -73,6 +77,8 @@ class FunASREngine:
             enable_ctc: 是否启用 CTC 辅助
             n_predict: 最大生成 token 数
             n_threads: 线程数
+            similar_threshold: 热词相似度阈值
+            max_hotwords: 召回并发送给 LLM 的最大热词数
         """
         # 配置参数
         self.script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -88,6 +94,9 @@ class FunASREngine:
         self.n_predict = n_predict
         self.n_threads = n_threads or (os.cpu_count() // 2)
         self.n_threads_batch = os.cpu_count()
+        self.hotword_threshold = 1.0  # 固定为1.0
+        self.similar_threshold = similar_threshold
+        self.max_hotwords = max_hotwords
 
         # 推理参数
         self.sample_rate = 16000
@@ -169,10 +178,10 @@ class FunASREngine:
 
             # 6. 初始化热词管理器
             vprint("[6/6] 初始化热词管理器...", verbose)
-            from pathlib import Path
             self.hotword_manager = get_hotword_manager(
                 hotword_file=Path(self.hotwords_path),
-                threshold=0.8
+                threshold=1.0,  # 固定为1.0，避免在 Python 层面发生强制替换
+                similar_threshold=self.similar_threshold
             )
             self.hotword_manager.load()
             self.hotword_manager.start_file_watcher()
@@ -219,7 +228,8 @@ class FunASREngine:
         # 热词匹配
         hotwords = []
         if self.corrector and self.corrector.hotwords and ctc_text:
-            res = self.corrector.correct(ctc_text, k=10)
+            res = self.corrector.correct(ctc_text, k=self.max_hotwords)
+            # 使用 set 去重
             candidates = set()
             for _, hw, _ in res.matchs:
                 candidates.add(hw)
@@ -233,7 +243,8 @@ class FunASREngine:
         self,
         hotwords: List[str] = None,
         language: Optional[str] = None,
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        verbose: bool = False
     ) -> Tuple[np.ndarray, np.ndarray, int, int]:
         """准备 Prompt Embeddings
 
@@ -241,6 +252,7 @@ class FunASREngine:
             hotwords: 热词列表
             language: 目标语言（如 "中文", "英文", "日文"）
             context: 上下文信息
+            verbose: 是否打印 Prompt 信息
         """
         # 构建 Prompt
         prefix_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n"
@@ -267,6 +279,11 @@ class FunASREngine:
 
         prefix_embd = self.embedding_table[prefix_tokens].astype(np.float32)
         suffix_embd = self.embedding_table[suffix_tokens].astype(np.float32)
+
+        if verbose:
+            vprint("-" * 15 + " Prefix Prompt " + "-" * 15, verbose)
+            vprint(prefix_prompt, verbose)
+            vprint("-" * 40, verbose)
 
         return prefix_embd, suffix_embd, len(prefix_tokens), len(suffix_tokens)
 
@@ -532,7 +549,7 @@ class FunASREngine:
             vprint("\n[4] 准备 Prompt...", verbose)
             t_prepare_start = time.perf_counter()
 
-            prefix_embd, suffix_embd, n_prefix, n_suffix = self._prepare_prompt(hotwords, language, context)
+            prefix_embd, suffix_embd, n_prefix, n_suffix = self._prepare_prompt(hotwords, language, context, verbose=verbose)
             timings.prepare = time.perf_counter() - t_prepare_start
             vprint(f"    Prefix: {n_prefix} tokens", verbose)
             vprint(f"    Suffix: {n_suffix} tokens", verbose)
@@ -572,11 +589,10 @@ class FunASREngine:
                     timestamps = [seg['start'] for seg in aligned]
 
                     vprint(f"    对齐耗时: {(time.perf_counter() - t_align_start)*1000:.2f}ms", verbose)
-                    vprint(f"    对齐结果 (前10个字符):", verbose)
-                    for r in aligned[:10]:
-                        vprint(f"      {r['start']:.2f}s: {r['char']}", verbose)
+                    preview = " ".join([f"{r['char']}({r['start']:.2f}s)" for r in aligned[:10]])
                     if len(aligned) > 10:
-                        vprint("      ...", verbose)
+                        preview += " ..."
+                    vprint(f"    结果预览: {preview}", verbose)
 
             timings.align = time.perf_counter() - t_align_start
 
@@ -625,6 +641,8 @@ def create_asr_engine(
     tokens_path: str,
     hotwords_path: str = None,
     enable_ctc: bool = True,
+    similar_threshold: float = 0.6,
+    max_hotwords: int = 10,
     verbose: bool = True,
 ) -> FunASREngine:
     """
@@ -637,6 +655,8 @@ def create_asr_engine(
         tokens_path: Tokens 文件路径
         hotwords_path: 热词文件路径（可选）
         enable_ctc: 是否启用 CTC
+        similar_threshold: 热词相似度阈值
+        max_hotwords: 召回并发送给 LLM 的最大热词数
         verbose: 是否打印信息
 
     Returns:
@@ -649,6 +669,8 @@ def create_asr_engine(
         tokens_path=tokens_path,
         hotwords_path=hotwords_path,
         enable_ctc=enable_ctc,
+        similar_threshold=similar_threshold,
+        max_hotwords=max_hotwords,
     )
 
     if not engine.initialize(verbose=verbose):

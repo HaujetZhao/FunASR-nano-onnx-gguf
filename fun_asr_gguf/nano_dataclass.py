@@ -129,6 +129,8 @@ class ASREngineConfig:
         n_threads: 线程数（None 表示自动）
         n_threads_batch: 批处理线程数（None 表示自动）
         n_ubatch: llama.cpp 内部物理 batch 大小
+        similar_threshold: 热词相似度阈值
+        max_hotwords: 召回并发送给 LLM 的最大热词数
         sample_rate: 音频采样率
     """
     encoder_onnx_path: str
@@ -141,6 +143,8 @@ class ASREngineConfig:
     n_threads: Optional[int] = None
     n_threads_batch: Optional[int] = None
     n_ubatch: int = 512
+    similar_threshold: float = 0.8
+    max_hotwords: int = 20
     sample_rate: int = 16000
 
 

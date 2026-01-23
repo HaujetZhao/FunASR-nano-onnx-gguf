@@ -222,8 +222,8 @@ class PhonemeCorrector:
 
 
 if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
+    from .. import setup_logging
+    setup_logging(level=logging.DEBUG)
     
     print("\n--- PhonemeCorrector 测试 ---")
     corrector = PhonemeCorrector(threshold=0.7)
@@ -274,6 +274,8 @@ VsCode
         print(f"  '{text}' -> '{result.text}'")
         if result.matchs:
             print(f"    匹配热词: {result.matchs}")
+        if result.similars:
+            print(f"    相似热词: {result.similars}")
     
     print("\n=== 英文测试 ===")
     test_cases_en = [
@@ -288,6 +290,8 @@ VsCode
         print(f"  '{text}' -> '{result.text}'")
         if result.matchs:
             print(f"    匹配热词: {result.matchs}")
+        if result.similars:
+            print(f"    相似热词: {result.similars}")
 
     # =====================================================================
     # 对比测试: FastRAG (粗筛) vs AccuRAG (精筛)

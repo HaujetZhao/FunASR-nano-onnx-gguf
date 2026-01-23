@@ -159,7 +159,7 @@ def find_best_match(main_seq: List[Phoneme], sub_seq: List[Phoneme]) -> Tuple[fl
     """
     # DEBUG
     import logging
-    logger = logging.getLogger('client')
+    logger = logging.getLogger('fun_asr_gguf.hotword.algo_calc')
     logger.debug(f"[DEBUG] find_best_match: main_seq type={type(main_seq)}, len={len(main_seq)}")
     logger.debug(f"[DEBUG] find_best_match: sub_seq type={type(sub_seq)}, len={len(sub_seq)}")
     if main_seq:
