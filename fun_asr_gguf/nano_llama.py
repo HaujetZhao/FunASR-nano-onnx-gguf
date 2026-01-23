@@ -137,9 +137,9 @@ def init_llama_lib():
         llama_name = "llama.dll"
         ggml_base_name = "ggml-base.dll"
     elif sys.platform == "darwin":
-        ggml_name = "ggml.dylib"
-        llama_name = "llama.dylib"
-        ggml_base_name = "ggml-base.dylib"
+        ggml_name = "libggml.dylib"
+        llama_name = "libggml.dylib"
+        ggml_base_name = "libggml-base.dylib"
     else:
         ggml_name = "libggml.so"
         llama_name = "libllama.so"
