@@ -132,9 +132,22 @@ def init_llama_lib():
     # 获取模块所在目录
     lib_dir = os.path.dirname(os.path.abspath(__file__))
 
-    GGML_DLL_PATH = os.path.join(lib_dir, "ggml.dll")
-    LLAMA_DLL_PATH = os.path.join(lib_dir, "llama.dll")
-    GGML_BASE_DLL_PATH = os.path.join(lib_dir, "ggml-base.dll")
+    if sys.platform.startswith("win"):
+        ggml_name = "ggml.dll"
+        llama_name = "llama.dll"
+        ggml_base_name = "ggml-base.dll"
+    elif sys.platform == "darwin":
+        ggml_name = "ggml.dylib"
+        llama_name = "llama.dylib"
+        ggml_base_name = "ggml-base.dylib"
+    else:
+        ggml_name = "libggml.so"
+        llama_name = "libllama.so"
+        ggml_base_name = "libggml-base.so"
+
+    GGML_DLL_PATH = os.path.join(lib_dir, ggml_name)
+    LLAMA_DLL_PATH = os.path.join(lib_dir, llama_name)
+    GGML_BASE_DLL_PATH = os.path.join(lib_dir, ggml_base_name)
 
     original_cwd = os.getcwd()
     os.chdir(lib_dir)
