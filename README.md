@@ -442,11 +442,16 @@ A:
 1. 使用 `context` 参数提供上下文信息
 2. 配置 `hot.txt` 添加领域热词
 
-### Q: 如何提高识别准确率？
+### Q: 输出全是「!!!!!!!!!!」
 
-A:
-1. 使用 `context` 参数提供上下文信息
-2. 配置 `hot.txt` 添加领域热词
+A: Intel 集成显卡的 fp16 矩阵求和计算没有使用 fp32 做临时变量，溢出为 NaN，产生了如此问题，解决办法是通过设置环境变量禁用 fp32 ，或禁用 vulkan。取决于 CPU 更快，还是集显的 fp32 更快。
+
+```python
+os.environ["VK_ICD_FILENAMES"] = "none"       # 禁止 Vulkan
+os.environ["GGML_VK_VISIBLE_DEVICES"] = "0"   # 禁止 Vulkan 用独显（强制用集显）
+os.environ["GGML_VK_DISABLE_F16"] = "1"       # 禁止 VulkanFP16 计算（Intel集显fp16有溢出问题）
+```
+
 
 
 ---
