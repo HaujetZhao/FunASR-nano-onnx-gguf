@@ -4,37 +4,6 @@ import torch.nn.functional as F
 import torchaudio
 import base64
 import numpy as np
-import logging
-import os
-
-# Ensure logs directory exists
-os.makedirs('logs', exist_ok=True)
-
-# Logger configuration
-model_logger = logging.getLogger("ModelDebug")
-model_logger.setLevel(logging.DEBUG)
-if not model_logger.handlers:
-    fh = logging.FileHandler('logs/model-debug.log', mode='w', encoding='utf-8')
-    fh.setFormatter(logging.Formatter('%(message)s'))
-    model_logger.addHandler(fh)
-
-def log_tensor_stats(name, tensor, valid_len=None, dim=1):
-    if tensor is None:
-        model_logger.debug(f"{name}: None")
-        return
-    # Use float for consistent logging regardless of input dtype
-    t = tensor.detach().cpu().float()
-    if valid_len is not None:
-        if t.dim() == 3:
-            if dim == 1:
-                t = t[:, :valid_len, :]
-            elif dim == 2:
-                t = t[:, :, :valid_len]
-        elif t.dim() == 2: # e.g. Mask (B, T)
-            t = t[:, :valid_len]
-    
-    msg = f"{name} | PrefixShape: {list(t.shape)} | Mean: {t.mean():.6e} | Max: {t.max():.6e} | Min: {t.min():.6e}"
-    model_logger.debug(msg)
 
 # ============================================================================
 # Basic Building Blocks
@@ -61,10 +30,6 @@ class SinusoidalPositionEncoder(nn.Module):
         x = x + position_encoding
         if mask is not None:
             x = x * mask.unsqueeze(-1)
-        
-        # DEBUG PROBE: Validating Position Encoding Prefix
-        valid_len = int(mask.sum().item()) if mask is not None else timesteps
-        log_tensor_stats("DEBUG: PosEnc Result", x, valid_len)
         return x
 
 class PositionwiseFeedForward(nn.Module):
@@ -218,24 +183,12 @@ class SenseVoiceEncoderSmall(nn.Module):
         self.after_norm, self.tp_norm = LayerNorm(512), LayerNorm(512)
 
     def forward(self, x, mask):
-        valid_len = int(mask.sum().item()) if mask is not None else x.shape[1]
-        
         x = self.embed(x * (512**0.5), mask)
-        for i, layer in enumerate(self.encoders0): 
-            x, _ = layer(x, mask)
-            log_tensor_stats(f"DEBUG: Encoder0 Layer {i} Output", x, valid_len)
-            
-        for i, layer in enumerate(self.encoders):  
-            x, _ = layer(x, mask)
-            if i == 0 or i == 24 or i == 48: # Log start, middle, end
-                log_tensor_stats(f"DEBUG: Encoder Block {i} Output", x, valid_len)
-                
+        for layer in self.encoders0: x, _ = layer(x, mask)
+        for layer in self.encoders:  x, _ = layer(x, mask)
         x = self.after_norm(x)
         if mask is not None: x = x * mask.unsqueeze(-1)
-        log_tensor_stats("DEBUG: After Norm Output", x, valid_len)
-
-        for i, layer in enumerate(self.tp_encoders): 
-            x, _ = layer(x, mask)
+        for layer in self.tp_encoders: x, _ = layer(x, mask)
         x = self.tp_norm(x)
         if mask is not None: x = x * mask.unsqueeze(-1)
         return x
@@ -312,8 +265,6 @@ class EncoderExportWrapperPaddable(nn.Module):
     def forward(self, audio, ilens):
         # 0. Initial Input
         valid_samples = ilens[0]
-        model_logger.debug(f"\n--- NEW INFERENCE (ilens: {ilens.tolist()}) ---")
-        log_tensor_stats("0. Audio Input", audio, valid_samples, dim=2)
 
         # 1. Length-Aware Normalization & AUDIO HARD-ZEROING
         mean_val = torch.mean(audio[0, 0, :valid_samples])
@@ -324,36 +275,26 @@ class EncoderExportWrapperPaddable(nn.Module):
         # Pre-emphasis
         if self.pre_emphasis_val > 0:
             audio = torch.cat([audio[..., :1], audio[..., 1:] - self.pre_emphasis * audio[..., :-1]], dim=-1)
-            # Re-apply hard-zeroing because pre-emphasis is an IIR/sliding filter
+            # Re-apply hard-zeroing
             audio[:, :, valid_samples:] = 0.0
             
-        log_tensor_stats("1. After Norm+Emp", audio, valid_samples, dim=2)
-
         # 2. STFT & Mel
         real, imag = self.stft_model(audio)
         T_mel_valid = (valid_samples // 160) + 1
-        log_tensor_stats("2a. STFT Real", real, T_mel_valid, dim=2)
         mel = (torch.matmul(self.fbank, real * real + imag * imag).transpose(1, 2) + 1e-7).log()
-        log_tensor_stats("2b. Mel Spectrogram", mel, T_mel_valid, dim=1)
         
         # 3. Corrected LFR Logic with Replicate Padding
-        T_mel_valid = (valid_samples // 160) + 1
         T_lfr_valid = (T_mel_valid + self.lfr_n - 1) // self.lfr_n
         T_phys = mel.shape[1]
         T_lfr_phys = (T_phys + self.lfr_n - 1) // self.lfr_n
         
         # --- REPLICATE STRATEGY ---
-        # Get valid part and the last valid frame
         valid_part = mel[:, :T_mel_valid, :]
         last_frame = mel[:, [T_mel_valid - 1]]
-        
-        # Construct a consistent Mel tensor that fills physical buffer with replicated frames
         padding_fill = last_frame.repeat(1, T_phys - T_mel_valid, 1)
         mel_consistent = torch.cat([valid_part, padding_fill], dim=1)
         
-        # Use mel_consistent for LFR context padding
         left_pad = mel_consistent[:, [0]].repeat(1, (self.lfr_m - 1) // 2, 1)
-        # Context right pad should also use the last valid frame
         right_pad = last_frame.repeat(1, (T_lfr_phys * self.lfr_n + self.lfr_m) - T_phys, 1)
         padded = torch.cat([left_pad, mel_consistent, right_pad], dim=1)
         
@@ -364,17 +305,13 @@ class EncoderExportWrapperPaddable(nn.Module):
         # 4. Masking
         m = (torch.arange(T_lfr_phys, device=x.device).unsqueeze(0) < T_lfr_valid).float()
         x = x * m.unsqueeze(-1)
-        log_tensor_stats("4. LFR Features", x, T_lfr_valid, dim=1)
         
         # 5. Model
         enc = self.hybrid_model.audio_encoder(x, m)
-        log_tensor_stats("5. Encoder Output", enc, T_lfr_valid, dim=1)
         adapt = self.hybrid_model.audio_adaptor(enc, m)
         
         # Target length calculation
         olens_1 = 1 + (T_lfr_valid - 3 + 2) // 2
         target_len = (1 + (olens_1 - 3 + 2) // 2 - 1) // 2 + 1
         
-        final = adapt[:, :target_len, :]
-        log_tensor_stats("7. Final Output", final) # Already sliced
-        return enc, final
+        return enc, adapt[:, :target_len, :]
