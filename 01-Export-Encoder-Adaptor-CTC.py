@@ -33,6 +33,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 model_dir = r'./Fun-ASR-Nano-2512'
 weight_path = os.path.join(model_dir, "model.pt")
 
+# New standardized names
 onnx_encoder_fp32 = f'{OUTPUT_DIR}/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx'
 onnx_ctc_fp32 = f'{OUTPUT_DIR}/Fun-ASR-Nano-CTC.fp32.onnx'
 tokens_path = f'{OUTPUT_DIR}/tokens.txt'
@@ -77,25 +78,12 @@ def generate_sensevoice_vocab(tiktoken_path):
     tokens.append(base64.b64encode("<blk>".encode()).decode())
     return tokens
 
-def merge_onnx_file(model_path):
-    print(f"   [Merge] Merging external data for {os.path.basename(model_path)}...")
-    data_file = model_path + ".data"
-    try:
-        model = onnx.load(model_path)
-        onnx.save(model, model_path)
-        print(f"   [Merge] Successfully embedded weights.")
-        if os.path.exists(data_file):
-            os.remove(data_file)
-            print(f"   [Cleanup] Deleted external data file.")
-    except Exception as e:
-        print(f"   [Warning] Merge failed: {e}")
-
 # =========================================================================
 # Main Export
 # =========================================================================
 
 def main():
-    print("\n[Hybrid Export] Consolidated Model Definitions Test...")
+    print("\n[Hybrid Export] Consolidated & Paddable Model Export...")
     
     tiktoken_path = os.path.join(model_dir, "multilingual.tiktoken")
     if os.path.exists(tiktoken_path):
@@ -110,27 +98,30 @@ def main():
     hybrid.load_weights(weight_path)
     hybrid.eval()
     
-    custom_stft = model_def.STFT_Process(model_type='stft_B', n_fft=NFFT_STFT, win_length=WINDOW_LENGTH, hop_len=HOP_LENGTH, max_frames=0).eval()
+    stft = model_def.STFT_Process(n_fft=NFFT_STFT, win_length=WINDOW_LENGTH, hop_len=HOP_LENGTH).eval()
     fbank = (torchaudio.functional.melscale_fbanks(NFFT_STFT // 2 + 1, 20, SAMPLE_RATE // 2, N_MELS, SAMPLE_RATE, None,'htk')).transpose(0, 1).unsqueeze(0)
 
     with torch.no_grad():
-        print(f"\n[1/2] Exporting Encoder-Adaptor (Dynamo=True)...")
-        enc_wrapper = model_def.EncoderExportWrapper(hybrid, custom_stft, fbank).eval()
-        audio = torch.randn(1, 1, SAMPLE_RATE * 1) 
+        print(f"\n[1/2] Exporting Paddable Encoder-Adaptor (Dynamo=True)...")
+        # Use the upgraded Paddable Wrapper
+        enc_wrapper = model_def.EncoderExportWrapperPaddable(hybrid, stft, fbank).eval()
+        dummy_samples = SAMPLE_RATE * 5
+        audio = torch.randn(1, 1, dummy_samples)
+        ilens = torch.tensor([dummy_samples], dtype=torch.long)
         
         torch.onnx.export(
-            enc_wrapper, (audio,), onnx_encoder_fp32,
-            input_names=['audio'], 
+            enc_wrapper, (audio, ilens), onnx_encoder_fp32,
+            input_names=['audio', 'ilens'], 
             output_names=['enc_output', 'adaptor_output'],
             dynamic_axes={
-                'audio': {2: 'audio_len'}, 
-                'enc_output': {1: 'enc_len'}, 
-                'adaptor_output': {1: 'adaptor_len'}
+                'audio': {2: 'samples'}, 
+                'ilens': {0: 'batch'},
+                'enc_output': {1: 'enc_frames'}, 
+                'adaptor_output': {1: 'adaptor_frames'}
             },
             opset_version=OPSET,
             dynamo=True
         )
-        merge_onnx_file(onnx_encoder_fp32)
 
         print(f"\n[2/2] Exporting CTC Head (Dynamo=True)...")
         ctc_wrapper = model_def.CTCHeadExportWrapper(hybrid).eval()
@@ -142,7 +133,6 @@ def main():
             opset_version=OPSET,
             dynamo=True
         )
-        merge_onnx_file(onnx_ctc_fp32)
         
     print("\n[Success] Export complete using consolidated module.")
 
