@@ -93,7 +93,8 @@ def main():
         overlap=4.0,
         start_second=0.0,
         duration=60.0,
-        srt=True
+        srt=True, 
+        temperature=0.4
     )
 
     # 输出结果

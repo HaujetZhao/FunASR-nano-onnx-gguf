@@ -62,7 +62,7 @@ class FunASREngine:
         start_second: Optional[float] = None,
         duration: Optional[float] = None,
         srt: bool = False,
-        temperature: float = 0.3,
+        temperature: float = 0.4,
         top_p: float = 1.0,
         top_k: int = 50
     ) -> TranscriptionResult:
