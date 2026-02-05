@@ -75,7 +75,7 @@ def main():
         verbose=verbose,
     )
 
-    input(f'\n预跑一遍，分配内存......\n')
+    print(f'\n预跑一遍，分配内存......\n')
     result = engine.transcribe(
         audio_file, 
         language=language, 
@@ -84,7 +84,6 @@ def main():
         duration=5.0,
     )
 
-    input('回车开始转录......')
     result = engine.transcribe(
         audio_file, 
         language=language, 
