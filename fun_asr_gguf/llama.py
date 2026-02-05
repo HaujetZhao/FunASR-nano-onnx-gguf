@@ -1,6 +1,7 @@
 import sys
 import os
 import ctypes
+import codecs
 import numpy as np
 import gguf
 from pathlib import Path
@@ -653,20 +654,19 @@ class LlamaSampler:
     def __del__(self):
         self.free()
 
-
 class ASRStreamDecoder:
     """ASR 专属流式解码器，集成字节解码与 ASRReporter 交互"""
     def __init__(self, vocab, reporter=None):
         self.vocab = vocab
         self.reporter = reporter
-        self.byte_decoder = ByteDecoder()
+        self.byte_decoder = codecs.getincrementaldecoder("utf-8")(errors='replace')
         self.generated_text = ""
         self.tokens_generated = 0
 
     def push(self, token_id: int):
         """推入 Token，返回新解码的文字片段"""
         raw_bytes = token_to_bytes(self.vocab, token_id)
-        text_piece = self.byte_decoder.decode(raw_bytes)
+        text_piece = self.byte_decoder.decode(raw_bytes, final=False)
         
         self.generated_text += text_piece
         self.tokens_generated += 1
@@ -678,7 +678,7 @@ class ASRStreamDecoder:
 
     def flush(self):
         """清空残余字节并返回"""
-        remaining = self.byte_decoder.flush()
+        remaining = self.byte_decoder.decode(b"", final=True)
         self.generated_text += remaining
         return remaining
 
@@ -728,36 +728,6 @@ def configure_logging(quiet=False):
 # =========================================================================
 # Utilities
 # =========================================================================
-
-class ByteDecoder:
-    def __init__(self):
-        self.buffer = b""
-    
-    def decode(self, raw_bytes):
-        self.buffer += raw_bytes
-        result = ""
-        while self.buffer:
-            try:
-                result += self.buffer.decode('utf-8')
-                self.buffer = b""
-                break
-            except UnicodeDecodeError as e:
-                if e.reason == 'unexpected end of data' or 'invalid continuation' in e.reason:
-                    if e.start > 0:
-                        result += self.buffer[:e.start].decode('utf-8', errors='replace')
-                        self.buffer = self.buffer[e.start:]
-                    break
-                else:
-                    result += self.buffer[:1].decode('utf-8', errors='replace')
-                    self.buffer = self.buffer[1:]
-        return result
-    
-    def flush(self):
-        if self.buffer:
-            result = self.buffer.decode('utf-8', errors='replace')
-            self.buffer = b""
-            return result
-        return ""
 
 def text_to_tokens(vocab, text):
     text_bytes = text.encode("utf-8")
