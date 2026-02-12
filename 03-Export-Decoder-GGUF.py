@@ -9,18 +9,20 @@ import sys
 # 配置部分
 # =========================================================================
 
+from export_config import MODEL_DIR, EXPORT_DIR
+
 # 源模型路径
-SOURCE_MODEL_PATH = './Fun-ASR-Nano-2512'
+SOURCE_MODEL_PATH = str(MODEL_DIR)
 CONFIG_PATH = f'{SOURCE_MODEL_PATH}/Qwen3-0.6B/config.json'
 
 # 中间产物 (HF 格式) 输出路径
-OUTPUT_HF_DIR = './model/Qwen3-0.6B'
+OUTPUT_HF_DIR = str(EXPORT_DIR / 'Qwen3-0.6B')
 # Tokenizer 输出路径
-OUTPUT_TOKENIZER_DIR = './model/Qwen3-0.6B'
+OUTPUT_TOKENIZER_DIR = str(EXPORT_DIR / 'Qwen3-0.6B')
 
 # 最终 GGUF 输出文件
-OUTPUT_GGUF_FILE_FP16 = './model/Fun-ASR-Nano-Decoder.fp16.gguf'
-OUTPUT_GGUF_FILE_INT8 = './model/Fun-ASR-Nano-Decoder.q8_0.gguf'
+OUTPUT_GGUF_FILE_FP16 = str(EXPORT_DIR / 'Fun-ASR-Nano-Decoder.fp16.gguf')
+OUTPUT_GGUF_FILE_INT8 = str(EXPORT_DIR / 'Fun-ASR-Nano-Decoder.q8_0.gguf')
 
 # 转换脚本路径 (使用 fun_asr_gguf 目录下的 convert_hf_to_gguf.py)
 CONVERT_SCRIPT = './fun_asr_gguf/convert_hf_to_gguf.py'

@@ -45,12 +45,16 @@ pip install -r requirements.txt
 
 ```bash
 pip install modelscope
-modelscope download --model FunAudioLLM/Fun-ASR-Nano-2512 --local_dir ./Fun-ASR-Nano-2512
+
+# 模型下载后会默认存放到 ~/.cache/modelscope/hub/models/FunAudioLLM/Fun-ASR-Nano-2512 
+modelscope download --model FunAudioLLM/Fun-ASR-Nano-2512 
 ```
 
 导出模型
 
 ```bash
+# 模型载入和导出路径会从 export_config.py 中读取
+
 # 导出 Encoder (FP32) + CTC Decoder (FP32)
 python 01-Export-Encoder-Adaptor-CTC.py
 

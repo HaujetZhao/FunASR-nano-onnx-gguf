@@ -2,9 +2,10 @@ import os
 import onnx
 from onnxruntime.transformers.float16 import convert_float_to_float16
 from onnxruntime.quantization import quantize_dynamic, QuantType
+from export_config import EXPORT_DIR
 
 # Configuration
-MODEL_DIR = "./model"
+MODEL_DIR = str(EXPORT_DIR)
 FP32_MODELS = [
     f"{MODEL_DIR}/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx",
     f"{MODEL_DIR}/Fun-ASR-Nano-CTC.fp32.onnx"

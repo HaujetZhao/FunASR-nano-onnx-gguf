@@ -1,5 +1,0 @@
-模型地址：https://www.modelscope.cn/models/FunAudioLLM/Fun-ASR-Nano-2512
-
-下载方式：
-
-modelscope download --model FunAudioLLM --local_dir .

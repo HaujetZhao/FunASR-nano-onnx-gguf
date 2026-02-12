@@ -22,15 +22,16 @@ logging.getLogger("onnxruntime").setLevel(logging.ERROR)
 
 # Import the consolidated model definitions
 import fun_asr_gguf.model_definition as model_def
+from export_config import MODEL_DIR, EXPORT_DIR
 
 # =========================================================================
 # Configuration
 # =========================================================================
 
-OUTPUT_DIR = r'./model'
+OUTPUT_DIR = str(EXPORT_DIR)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-model_dir = r'./Fun-ASR-Nano-2512'
+model_dir = str(MODEL_DIR)
 weight_path = os.path.join(model_dir, "model.pt")
 
 # New standardized names
