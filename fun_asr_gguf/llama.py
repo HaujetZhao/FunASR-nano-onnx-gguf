@@ -468,7 +468,7 @@ class LlamaContext:
     """上下文的面向对象封装"""
     def __init__(self, model, n_ctx=2048, n_batch=2048, n_ubatch=512, n_seq_max=1, 
                  embeddings=False, pooling_type=0, flash_attn=True, 
-                 offload_kqv=True, no_perf=True, n_threads=None):
+                 offload_kqv=True, no_perf=True, n_threads=None, n_threads_batch=None):
         self.model = model # 保持模型引用防止被释放
         params = llama_context_default_params()
         params.n_ctx = n_ctx
@@ -481,12 +481,17 @@ class LlamaContext:
         params.offload_kqv = offload_kqv
         params.no_perf = no_perf
         
+        # 线程配置
+        cpu_count = os.cpu_count() or 4
         if n_threads:
             params.n_threads = n_threads
-            params.n_threads_batch = n_threads
         else:
-            params.n_threads = os.cpu_count() // 2
-            params.n_threads_batch = os.cpu_count()
+            params.n_threads = cpu_count // 2
+
+        if n_threads_batch:
+            params.n_threads_batch = n_threads_batch
+        else:
+            params.n_threads_batch = n_threads if n_threads else cpu_count
 
         self.ptr = llama_init_from_model(model.ptr, params)
         if not self.ptr:
