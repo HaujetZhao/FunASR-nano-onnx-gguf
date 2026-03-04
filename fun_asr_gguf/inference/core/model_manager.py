@@ -1,12 +1,10 @@
 import os
 import time
-import ctypes
 from pathlib import Path
-from typing import Optional, Tuple
 
 from .. import llama
-from ..ctc import load_ctc_tokens
-from ..nano_onnx import load_onnx_models
+from ..encoder import AudioEncoder
+from ..ctc import CTCDecoder
 from ..hotword.manager import get_hotword_manager
 from ..utils import vprint
 from ..prompt_utils import PromptBuilder
@@ -18,15 +16,18 @@ class ModelManager:
     def __init__(self, config: ASREngineConfig):
         self.config = config
         
-        # 运行时对象
-        self.encoder_sess = None
-        self.ctc_sess = None
+        # 运行时组件
+        self.encoder = None
+        self.ctc_decoder = None
+        
+        # LLM 相关
         self.model = None
         self.ctx = None
         self.vocab = None
         self.eos_token = None
         self.embedding_table = None
-        self.ctc_id2token = None
+        
+        # 辅助组件
         self.hotword_manager = None
         self.corrector = None
         self.prompt_builder = None
@@ -40,26 +41,35 @@ class ModelManager:
         try:
             t_start = time.perf_counter()
             
-            # 1. ONNX
-            vprint("[1/6] 加载 ONNX 模型...", verbose)
-            self.encoder_sess, self.ctc_sess, _ = load_onnx_models(
-                self.config.encoder_onnx_path,
-                self.config.ctc_onnx_path
+            # 1. Encoder (ONNX)
+            vprint("[1/6] 加载音频编码器 (Encoder)...", verbose)
+            self.encoder = AudioEncoder(
+                model_path=self.config.encoder_onnx_path,
+                dml_enable=self.config.dml_enable,
+                pad_to=self.config.pad_to
             )
 
-            # 2. GGUF
-            vprint("[2/6] 加载 GGUF LLM Decoder...", verbose)
+            # 2. CTC Decoder (ONNX + Search)
+            vprint("[2/6] 加载 CTC 推理与解码器...", verbose)
+            self.ctc_decoder = CTCDecoder(
+                model_path=self.config.ctc_onnx_path,
+                tokens_path=self.config.tokens_path,
+                dml_enable=self.config.dml_enable,
+                pad_to=self.config.pad_to
+            )
+
+            # 3. GGUF LLM Decoder
+            vprint("[3/6] 加载 GGUF LLM 解码器...", verbose)
             self.model = llama.LlamaModel(self.config.decoder_gguf_path)
-            
             self.vocab = self.model.vocab
             self.eos_token = self.model.eos_token
 
-            # 3. Embeddings
-            vprint("[3/6] 加载 Embedding 权重...", verbose)
+            # 4. Embeddings
+            vprint("[4/6] 加载 Embedding 权重...", verbose)
             self.embedding_table = llama.get_token_embeddings_gguf(self.config.decoder_gguf_path)
             
-            # 4. Context
-            vprint("[4/6] 创建 LLM 上下文...", verbose)
+            # 5. LLM Context
+            vprint("[5/6] 创建 LLM 上下文...", verbose)
             self.ctx = llama.LlamaContext(
                 self.model,
                 n_ctx=2048,
@@ -68,16 +78,12 @@ class ModelManager:
                 n_threads=self.config.n_threads,
             )
             
-            # 5. CTC & Prompt
-            vprint("[5/6] 加载 CTC 词表与 Prompt 构建器...", verbose)
-            self.ctc_id2token = load_ctc_tokens(self.config.tokens_path)
+            # 6. Prompt & Hotwords
+            vprint("[6/6] 初始化 Prompt 构建器与热词管理器...", verbose)
             self.prompt_builder = PromptBuilder(self.vocab, self.embedding_table)
 
-            # 6. Hotwords
-            vprint("[6/6] 初始化热词管理器...", verbose)
             hw_path = self.config.hotwords_path
             if not hw_path:
-                # 默认逻辑
                 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 hw_path = os.path.join(script_dir, "hot.txt")
                 
@@ -90,6 +96,9 @@ class ModelManager:
             self.hotword_manager.start_file_watcher()
             self.corrector = self.hotword_manager.get_corrector()
             self.corrector.correct("热个身") # 热身
+            
+            # 绑定校对器到 CTC 解码器
+            self.ctc_decoder.corrector = self.corrector
 
             self._initialized = True
             vprint(f"✓ 模型加载完成 (耗时: {time.perf_counter() - t_start:.2f}s)", verbose)
@@ -97,12 +106,17 @@ class ModelManager:
             
         except Exception as e:
             vprint(f"✗ 初始化失败: {e}", verbose)
+            import traceback
+            traceback.print_exc()
             return False
 
     def cleanup(self):
         if self.hotword_manager:
             self.hotword_manager.stop_file_watcher()
-        self.ctx = None   # 自动调用 __del__ 释放
-        self.model = None # 自动调用 __del__ 释放
+        self.ctx = None
+        self.model = None
+        self.encoder = None
+        self.ctc_decoder = None
         self._initialized = False
         print("[ASR] 资源已释放")
+
