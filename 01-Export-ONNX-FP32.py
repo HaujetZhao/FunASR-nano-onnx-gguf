@@ -8,7 +8,7 @@ import numpy as np
 import base64
 from pathlib import Path
 from export_config import MODEL_DIR, EXPORT_DIR
-import fun_asr_gguf.model_definition as model_def
+import fun_asr_gguf.export.model_definition as model_def
 
 # Suppress warnings
 os.environ["CUDA_VISIBLE_DEVICES"] = ""

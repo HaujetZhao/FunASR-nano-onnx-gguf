@@ -50,11 +50,11 @@ logger = setup_logging(level=logging.WARNING)
 
 # ==================== 导入主要组件 ====================
 
-from .asr_engine import (
+from .inference.asr_engine import (
     FunASREngine,
     create_asr_engine,
 )
-from .nano_dataclass import (
+from .inference.nano_dataclass import (
     RecognitionResult,
     RecognitionStream,
     TranscriptionResult,

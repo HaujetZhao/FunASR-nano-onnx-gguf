@@ -17,7 +17,7 @@ OUTPUT_HF_DIR = str(EXPORT_DIR / 'Qwen3-0.6B')
 OUTPUT_GGUF_FILE_FP16 = str(EXPORT_DIR / 'Fun-ASR-Nano-Decoder.fp16.gguf')
 
 # 转换脚本路径
-CONVERT_SCRIPT = './fun_asr_gguf/convert_hf_to_gguf.py'
+CONVERT_SCRIPT = './fun_asr_gguf/export/convert_hf_to_gguf.py'
 
 def main():
     print("\n[Step 04] Exporting Decoder GGUF FP16...")

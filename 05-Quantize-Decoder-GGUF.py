@@ -5,7 +5,7 @@ from export_config import EXPORT_DIR
 
 # 设置路径
 PROJECT_ROOT = Path(__file__).parent.absolute()
-QUANTIZE_EXE = PROJECT_ROOT / "fun_asr_gguf" / "bin" / "llama-quantize.exe"
+QUANTIZE_EXE = PROJECT_ROOT / "fun_asr_gguf" / 'inference' / "bin" / "llama-quantize.exe"
 
 QUANTIZE_TYPE = "q5_k"
 MODEL_DIR = Path(EXPORT_DIR)
