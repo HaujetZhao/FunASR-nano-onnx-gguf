@@ -86,8 +86,10 @@ class ModelManager:
             vprint("[6/6] 初始化 Prompt 构建器与热词管理器...", verbose)
             self.prompt_builder = PromptBuilder(self.vocab, self.embedding_table)
 
+            # 获取热词管理器（路径逻辑下放到 get_hotword_manager 或保持在配置层）
             hw_path = self.config.hotwords_path
             if not hw_path:
+                # 默认路径逻辑可以保持，或者由 get_hotword_manager 内部处理
                 script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 hw_path = os.path.join(script_dir, "hot.txt")
                 
@@ -98,17 +100,13 @@ class ModelManager:
             )
             self.hotword_manager.load()
             self.hotword_manager.start_file_watcher()
+            
+            # 获取纠错器并下放到 CTC 解码器
             self.corrector = self.hotword_manager.get_corrector()
-            self.corrector.correct("热个身") # 热身
+            self.corrector.correct("热身") # 热身
             
-            # 绑定校对器到 CTC 解码器
-            self.ctc_decoder.corrector = self.corrector
-            
-            # [HOTWORD] 初始化雷达与整合器，注入到 CTC 解码器
-            all_hotwords = list(self.corrector.hotwords.keys())
-            self.radar = HotwordRadar(all_hotwords, self.ctc_decoder.tokenizer)
-            self.ctc_decoder.radar = self.radar
-            self.ctc_decoder.integrator = self.integrator
+            # [职责下放] 一行调用，由 CTC 内部完成配套组件（Radar, Integrator）的初始化
+            self.ctc_decoder.set_hotword_engine(self.corrector)
 
 
             self._initialized = True

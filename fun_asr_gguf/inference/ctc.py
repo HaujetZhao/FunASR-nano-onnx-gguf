@@ -230,6 +230,24 @@ class CTCDecoder:
         for _, hw, _ in res.similars: candidates.add(hw)
         return res.text, list(candidates)
 
+    def set_hotword_engine(self, corrector):
+        """
+        [职责下放] 绑定纠错器，并自动初始化内部配套的雷达与整合器。
+        符合高内聚原则：CTCDecoder 自己负责管理其热词功能闭环。
+        """
+        self.corrector = corrector
+        
+        # 内部自治：利用已有的 tokenizer 自动创建配套组件
+        # 延迟导入以避免循环依赖
+        from .radar import HotwordRadar
+        from .integrator import ResultIntegrator
+        
+        all_hotwords = list(corrector.hotwords.keys())
+        self.radar = HotwordRadar(all_hotwords, self.tokenizer)
+        self.integrator = ResultIntegrator()
+        
+        logger.info(f"[CTC] 已绑定热词引擎 (热词数: {len(all_hotwords)})")
+
 
 def load_ctc_tokens(filename):
     """加载 CTC 词表"""
