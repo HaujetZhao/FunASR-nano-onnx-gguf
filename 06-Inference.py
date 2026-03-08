@@ -73,7 +73,7 @@ def main():
         max_hotwords=10, 
         enable_ctc=enable_ctc,
         verbose=verbose,
-        dml_enable = True, 
+        provider = 'cuda', 
         pad_to = 30, 
     )
 
@@ -94,7 +94,7 @@ def main():
         segment_size=60.0,
         overlap=4.0,
         start_second=0.0,
-        duration=30.0,
+        duration=60.0,
         srt=True, 
         temperature=0.4
     )

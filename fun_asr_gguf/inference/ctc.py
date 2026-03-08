@@ -3,6 +3,7 @@ import numpy as np
 import base64
 import os
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Any, Optional
 from . import logger
@@ -48,10 +49,10 @@ class CTCTokenizer:
 
 class CTCDecoder:
     """FunASR CTC 推理与解码器 (多阶段内部流水线)"""
-    def __init__(self, model_path: str, tokens_path: str, dml_enable: bool = True, pad_to: int = 30, corrector: Optional[Any] = None):
+    def __init__(self, model_path: str, tokens_path: str, provider: str = 'CPU', pad_to: int = 30, corrector: Optional[Any] = None):
         self.model_path = model_path
         self.tokens_path = tokens_path
-        self.dml_enable = dml_enable
+        self.provider = provider.upper()
         self.pad_to = pad_to
         self.corrector = corrector
         
@@ -73,9 +74,19 @@ class CTCDecoder:
         session_opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         session_opts.enable_profiling = True
         
+        available_providers = onnxruntime.get_available_providers()
         providers = ['CPUExecutionProvider']
-        if self.dml_enable and 'DmlExecutionProvider' in onnxruntime.get_available_providers():
+        
+        if self.provider in ('TENSORRT', 'TRT') and 'TensorrtExecutionProvider' in available_providers:
+            providers.insert(0, ('TensorrtExecutionProvider', {
+                'trt_fp16_enable': True,
+                'trt_engine_cache_enable': True,
+                'trt_engine_cache_path': Path(self.model_path).parent / 'trt_cache',
+            }))
+        elif self.provider == 'DML' and 'DmlExecutionProvider' in available_providers:
             providers.insert(0, 'DmlExecutionProvider') 
+        elif self.provider == 'CUDA' and 'CUDAExecutionProvider' in available_providers:
+            providers.insert(0, 'CUDAExecutionProvider')
             
         logger.info(f"[CTC] 加载模型: {os.path.basename(self.model_path)} (Providers: {providers})")
         

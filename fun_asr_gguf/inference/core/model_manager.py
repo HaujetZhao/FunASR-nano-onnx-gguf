@@ -49,7 +49,7 @@ class ModelManager:
             vprint("[1/6] 加载音频编码器 (Encoder)...", verbose)
             self.encoder = AudioEncoder(
                 model_path=self.config.encoder_onnx_path,
-                dml_enable=self.config.dml_enable,
+                provider=self.config.provider,
                 pad_to=self.config.pad_to
             )
 
@@ -58,7 +58,7 @@ class ModelManager:
             self.ctc_decoder = CTCDecoder(
                 model_path=self.config.ctc_onnx_path,
                 tokens_path=self.config.tokens_path,
-                dml_enable=self.config.dml_enable,
+                provider=self.config.provider,
                 pad_to=self.config.pad_to
             )
 
