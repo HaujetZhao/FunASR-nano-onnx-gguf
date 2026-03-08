@@ -49,8 +49,8 @@ class ModelManager:
             vprint("[1/6] 加载音频编码器 (Encoder)...", verbose)
             self.encoder = AudioEncoder(
                 model_path=self.config.encoder_onnx_path,
-                provider=self.config.provider,
-                pad_to=self.config.pad_to
+                onnx_provider=self.config.onnx_provider,
+                dml_pad_to=self.config.dml_pad_to
             )
 
             # 2. CTC Decoder (ONNX + Search)
@@ -58,8 +58,8 @@ class ModelManager:
             self.ctc_decoder = CTCDecoder(
                 model_path=self.config.ctc_onnx_path,
                 tokens_path=self.config.tokens_path,
-                provider=self.config.provider,
-                pad_to=self.config.pad_to
+                onnx_provider=self.config.onnx_provider,
+                dml_pad_to=self.config.dml_pad_to
             )
 
             # 3. GGUF LLM Decoder

@@ -136,7 +136,7 @@ class StreamDecoder:
             enc_output, 
             self.models.config.enable_ctc, 
             self.models.config.max_hotwords, 
-            top_k = 10
+            top_k = self.models.config.ctc_topk
         )
         timings.ctc = time.perf_counter() - t_s
         

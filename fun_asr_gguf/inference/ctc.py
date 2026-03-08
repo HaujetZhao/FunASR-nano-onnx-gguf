@@ -49,11 +49,11 @@ class CTCTokenizer:
 
 class CTCDecoder:
     """FunASR CTC 推理与解码器 (多阶段内部流水线)"""
-    def __init__(self, model_path: str, tokens_path: str, provider: str = 'CPU', pad_to: int = 30, corrector: Optional[Any] = None):
+    def __init__(self, model_path: str, tokens_path: str, onnx_provider: str = 'CPU', dml_pad_to: int = 30, corrector: Optional[Any] = None):
         self.model_path = model_path
         self.tokens_path = tokens_path
-        self.provider = provider.upper()
-        self.pad_to = pad_to
+        self.onnx_provider = onnx_provider.upper()
+        self.dml_pad_to = dml_pad_to
         self.corrector = corrector
         
         self.sess = None
@@ -77,15 +77,15 @@ class CTCDecoder:
         available_providers = onnxruntime.get_available_providers()
         providers = ['CPUExecutionProvider']
         
-        if self.provider in ('TENSORRT', 'TRT') and 'TensorrtExecutionProvider' in available_providers:
+        if self.onnx_provider in ('TENSORRT', 'TRT') and 'TensorrtExecutionProvider' in available_providers:
             providers.insert(0, ('TensorrtExecutionProvider', {
                 'trt_fp16_enable': True,
                 'trt_engine_cache_enable': True,
                 'trt_engine_cache_path': Path(self.model_path).parent / 'trt_cache',
             }))
-        elif self.provider == 'DML' and 'DmlExecutionProvider' in available_providers:
+        elif self.onnx_provider == 'DML' and 'DmlExecutionProvider' in available_providers:
             providers.insert(0, 'DmlExecutionProvider') 
-        elif self.provider == 'CUDA' and 'CUDAExecutionProvider' in available_providers:
+        elif self.onnx_provider == 'CUDA' and 'CUDAExecutionProvider' in available_providers:
             providers.insert(0, 'CUDAExecutionProvider')
             
         logger.info(f"[CTC] 加载模型: {os.path.basename(self.model_path)} (Providers: {providers})")
@@ -116,12 +116,12 @@ class CTCDecoder:
             
 
     def warmup(self):
-        if self.pad_to <= 0:
+        if self.dml_pad_to <= 0:
             return
-        target_t_lfr = int((self.pad_to * 100 + 5) // 6) + 1
+        target_t_lfr = int((self.dml_pad_to * 100 + 5) // 6) + 1
         dummy_enc = np.zeros((1, target_t_lfr, 512), dtype=self.input_dtype)
         in_name = self.sess.get_inputs()[0].name
-        logger.info(f"[CTC] 正在预热 (固定形状: {self.pad_to}s)...")
+        logger.info(f"[CTC] 正在预热 (固定形状: {self.dml_pad_to}s)...")
         self.sess.run(None, {in_name: dummy_enc})
 
     # ================================================================

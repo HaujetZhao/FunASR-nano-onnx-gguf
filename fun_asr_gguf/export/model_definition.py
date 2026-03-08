@@ -329,7 +329,7 @@ class EncoderExportWrapper(EncoderExportWrapperPaddable):
         return super().forward(audio, ilens)
 
 class CTCHeadExportWrapper(nn.Module):
-    def __init__(self, hybrid_model, topk=100):
+    def __init__(self, hybrid_model, topk=30):
         super().__init__()
         self.ctc_decoder, self.ctc_proj = hybrid_model.ctc_decoder, hybrid_model.ctc_proj
         self.topk = topk

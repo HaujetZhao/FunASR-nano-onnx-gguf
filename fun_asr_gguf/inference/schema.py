@@ -136,8 +136,9 @@ class ASREngineConfig:
         similar_threshold: 热词相似度阈值
         max_hotwords: 召回并发送给 LLM 的最大热词数
         sample_rate: 音频采样率
-        provider: 推理后端 (CPU, CUDA, DML, TensorRT)
-        pad_to: 填充长度（秒）
+        onnx_provider: 推理后端 (CPU, CUDA, DML, TensorRT)
+        ctc_topk: CTC 解码时的 Top-K 深度
+        dml_pad_to: DML 专用填充长度（秒）
     """
     encoder_onnx_path: str
     ctc_onnx_path: str
@@ -152,8 +153,9 @@ class ASREngineConfig:
     similar_threshold: float = 0.6
     max_hotwords: int = 10
     sample_rate: int = 16000
-    provider: str = 'CPU'  # CPU, CUDA, DML, TensorRT
-    pad_to: int = 30
+    onnx_provider: str = 'CPU'  # CPU, CUDA, DML, TensorRT
+    ctc_topk: int = 20
+    dml_pad_to: int = 30
     vulkan_enable: bool = True
     vulkan_force_fp32: bool = False
 
