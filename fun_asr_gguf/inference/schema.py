@@ -139,6 +139,7 @@ class ASREngineConfig:
         onnx_provider: 推理后端 (CPU, CUDA, DML, TensorRT)
         ctc_topk: CTC 解码时的 Top-K 深度
         dml_pad_to: DML 专用填充长度（秒）
+        verbose: 是否打印详细加载日志
     """
     encoder_onnx_path: str
     ctc_onnx_path: str
@@ -158,6 +159,7 @@ class ASREngineConfig:
     dml_pad_to: int = 30
     vulkan_enable: bool = True
     vulkan_force_fp32: bool = False
+    verbose: bool = True
 
 
 # ==================== CTC 结果相关 ====================

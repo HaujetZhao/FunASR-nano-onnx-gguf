@@ -23,6 +23,9 @@ class FunASREngine:
         self.models = ModelManager(self.config)
         self.orchestrator = TranscriptionOrchestrator(self.models)
         self.sample_rate = self.config.sample_rate
+        
+        # [自动化] 构造时即完成初始化
+        self.initialize(verbose=self.config.verbose)
 
     def initialize(self, verbose: bool = True) -> bool:
         """初始化模型资源"""
@@ -121,11 +124,8 @@ def create_asr_engine(
         dml_pad_to=dml_pad_to,
         vulkan_enable=vulkan_enable,
         vulkan_force_fp32=vulkan_force_fp32,
+        verbose=verbose,
     )
     
-    engine = FunASREngine(config)
-    
-    if not engine.initialize(verbose=verbose):
-        raise RuntimeError("Failed to initialize ASR engine")
-    return engine
+    return FunASREngine(config)
 
