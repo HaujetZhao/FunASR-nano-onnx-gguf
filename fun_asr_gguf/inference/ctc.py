@@ -72,7 +72,7 @@ class CTCDecoder:
         session_opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
         session_opts.add_session_config_entry("session.inter_op.allow_spinning", "0")
         session_opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        session_opts.enable_profiling = True
+        # session_opts.enable_profiling = True
         
         available_providers = onnxruntime.get_available_providers()
         providers = ['CPUExecutionProvider']
