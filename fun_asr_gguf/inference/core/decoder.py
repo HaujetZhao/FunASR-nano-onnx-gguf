@@ -146,78 +146,47 @@ class StreamDecoder:
             if hotwords: reporter.print(f"    热词: {hotwords}")
         reporter.print(f"    耗时: {timings.ctc*1000:.2f}ms")
 
-        # Two-Pass 解码循环
-        current_hotwords = hotwords
-        text = ""
+        # 3. Prompt
+        reporter.print("\n[4] 准备 Prompt...")
         
-        for attempt in range(2):
-            # 3. Prompt
-            pass_suffix = f" (Pass {attempt+1})" if attempt > 0 else ""
-            reporter.print(f"\n[4] 准备 Prompt{pass_suffix}...")
-            
-            t_s = time.perf_counter()
-            p_embd, s_embd, n_p, n_s, p_text = self.models.prompt_builder.build_prompt(current_hotwords, language, context)
-            
-            # 确保属性已初始化
-            if not hasattr(timings, 'prepare'): timings.prepare = 0.0
-            timings.prepare += (time.perf_counter() - t_s)
-            
-            if reporter.verbose and reporter.skip_technical is False:
-                reporter.print("-" * 15 + " Prefix Prompt " + "-" * 15 + "\n" + p_text + "\n" + "-" * 40)
-            
-            reporter.print(f"    Prefix: {n_p} tokens")
-            reporter.print(f"    Suffix: {n_s} tokens")
+        t_s = time.perf_counter()
+        p_embd, s_embd, n_p, n_s, p_text = self.models.prompt_builder.build_prompt(hotwords, language, context)
+        
+        # 确保属性已初始化
+        if not hasattr(timings, 'prepare'): timings.prepare = 0.0
+        timings.prepare += (time.perf_counter() - t_s)
+        
+        if reporter.verbose and reporter.skip_technical is False:
+            reporter.print("-" * 15 + " Prefix Prompt " + "-" * 15 + "\n" + p_text + "\n" + "-" * 40)
+        
+        reporter.print(f"    Prefix: {n_p} tokens")
+        reporter.print(f"    Suffix: {n_s} tokens")
 
-            # 4. LLM
-            reporter.print(f"\n[5] LLM 解码{pass_suffix if 'pass_suffix' in locals() else ''}...")
-            reporter.print("=" * 70)
-            
-            full_embd = np.concatenate([p_embd, audio_embd.astype(np.float32), s_embd], axis=0)
+        # 4. LLM
+        reporter.print("\n[5] LLM 解码...")
+        reporter.print("=" * 70)
+        
+        full_embd = np.concatenate([p_embd, audio_embd.astype(np.float32), s_embd], axis=0)
 
-            # LLM 解码循环：若熔断则加温重试（最多重试 3 次）
-            for _ in range(4):
-                llm_res = self.llm_decoder.decode(
-                    full_embd, full_embd.shape[0], self.models.config.n_predict, 
-                    stream_output=verbose, reporter=reporter,
-                    temperature=temperature, top_p=top_p, top_k=top_k
-                )
-                if not llm_res.is_aborted: break
-                temperature += 0.3
-                llm_res.text += "====解码有误，强制熔断===="
-                print(f"\n\n[!] 解码有误，熔断重试 (温度设为 {temperature:.1f})\n")
+        # LLM 解码循环：若熔断则加温重试（最多重试 3 次）
+        text = ""
+        for _ in range(4):
+            llm_res = self.llm_decoder.decode(
+                full_embd, full_embd.shape[0], self.models.config.n_predict, 
+                stream_output=verbose, reporter=reporter,
+                temperature=temperature, top_p=top_p, top_k=top_k
+            )
+            if not llm_res.is_aborted: break
+            temperature += 0.3
+            llm_res.text += "====解码有误，强制熔断===="
+            print(f"\n\n[!] 解码有误，熔断重试 (温度设为 {temperature:.1f})\n")
 
-            text = llm_res.text.strip()
-            timings.inject = llm_res.t_inject
-            timings.llm_generate = llm_res.t_gen
-            
-            if reporter: reporter.print("\n" + "=" * 70)
-            
-            reporter.print("\n" + "=" * 70)
-
-            # 已经解码第二遍则跳出
-            if attempt == 1 or not (self.models.corrector and self.models.corrector.hotwords):
-                break
-
-            # 重打分：使用 LLM 的结果进行热词匹配
-            res_pass1 = self.models.corrector.correct(text, k=self.models.config.max_hotwords)
-            
-            # 收集 Pass 1 找到的所有热词
-            pass1_hotwords = set()
-            for _, hw, _ in res_pass1.matchs: pass1_hotwords.add(hw)
-            for _, hw, _ in res_pass1.similars: pass1_hotwords.add(hw)
-            
-            # 找出 CTC 没漏掉的（即新发现的）
-            current_hotwords_set = set(current_hotwords)
-            new_hotwords = pass1_hotwords - current_hotwords_set
-            
-            # 如果没有新的热词，就跳出
-            if not new_hotwords:
-                break
-
-            logger.info(f"[Two-Pass] 发现新热词，触发第二遍解码: {new_hotwords}")
-            reporter.print(f"\n[Two-Pass] 发现新热词: {new_hotwords}，正在重试...")
-            current_hotwords = list(current_hotwords_set | new_hotwords)
-            hotwords = current_hotwords
+        text = llm_res.text.strip()
+        timings.inject = llm_res.t_inject
+        timings.llm_generate = llm_res.t_gen
+        
+        if reporter: reporter.print("\n" + "=" * 70)
+        reporter.print("\n" + "=" * 70)
 
 
         # 5. Align
