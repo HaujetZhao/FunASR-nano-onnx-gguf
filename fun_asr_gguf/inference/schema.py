@@ -95,6 +95,17 @@ class Timings:
     integrate: float = 0.0
     total: float = 0.0
 
+    def __iadd__(self, other: 'Timings') -> 'Timings':
+        self.encode += getattr(other, 'encode', 0.0)
+        self.ctc += getattr(other, 'ctc', 0.0)
+        self.radar += getattr(other, 'radar', 0.0)
+        self.prepare += getattr(other, 'prepare', 0.0)
+        self.inject += getattr(other, 'inject', 0.0)
+        self.llm_generate += getattr(other, 'llm_generate', 0.0)
+        self.align += getattr(other, 'align', 0.0)
+        self.integrate += getattr(other, 'integrate', 0.0)
+        return self
+
 
 @dataclass
 class TranscriptionResult:
@@ -145,7 +156,6 @@ class ASREngineConfig:
     ctc_onnx_path: str
     decoder_gguf_path: str
     tokens_path: str
-    hotwords_path: Optional[str] = None
     enable_ctc: bool = True
     n_predict: int = 512
     n_threads: Optional[int] = None
@@ -159,6 +169,7 @@ class ASREngineConfig:
     dml_pad_to: int = 30
     vulkan_enable: bool = True
     vulkan_force_fp32: bool = False
+    hotwords: List[str] = field(default_factory=list)
     verbose: bool = True
 
 
@@ -171,13 +182,11 @@ class CTCResult:
 
     Attributes:
         text: 识别的字符/词
-        start: 起始时间（秒）
-        end: 结束时间（秒）
+        timestamp: 时间戳（秒）
         score: 置信度分数
     """
     text: str
-    start: float
-    end: float
+    timestamp: float
     score: float = 1.0
 
 
@@ -236,7 +245,7 @@ class DecodeResult:
     """
     text: str = ""
     ctc_results: List = field(default_factory=list)
-    aligned: List[Dict[str, Any]] = field(default_factory=list)
+    aligned: List[List[Any]] = field(default_factory=list)
     audio_embd: Optional[np.ndarray] = None
     n_prefix: int = 0
     n_suffix: int = 0

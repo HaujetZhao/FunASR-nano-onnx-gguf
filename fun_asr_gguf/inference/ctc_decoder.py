@@ -7,11 +7,14 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Any, Optional
 from . import logger
+from .hotword.hot_phoneme import PhonemeCorrector
+from .radar import HotwordRadar
+from .integrator import ResultIntegrator
 
 @dataclass
 class Token:
     text: str
-    start: float
+    timestamp: float
     is_hotword: bool = False
 
 class CTCTokenizer:
@@ -49,23 +52,27 @@ class CTCTokenizer:
 
 class CTCDecoder:
     """FunASR CTC 推理与解码器 (多阶段内部流水线)"""
-    def __init__(self, model_path: str, tokens_path: str, onnx_provider: str = 'CPU', dml_pad_to: int = 30, corrector: Optional[Any] = None):
+    def __init__(self, model_path: str, tokens_path: str, onnx_provider: str = 'CPU', dml_pad_to: int = 30, hotwords: Optional[List[str]] = None, similar_threshold: float = 0.6):
         self.model_path = model_path
         self.tokens_path = tokens_path
         self.onnx_provider = onnx_provider.upper()
         self.dml_pad_to = dml_pad_to
-        self.corrector = corrector
         
         self.sess = None
         self.id2token = {}
         self.input_dtype = np.float32
         self.tokenizer = None   # CTCTokenizer 包装器
-        self.radar = None       # HotwordRadar（由 ModelManager 注入）
-        self.integrator = None  # ResultIntegrator（由 ModelManager 注入）
+        self._load_tokens()
+        
+        # 音素热词、CTC热词
+        self.corrector = PhonemeCorrector(threshold=1.0, similar_threshold=similar_threshold)
+        self.radar = HotwordRadar([], self.tokenizer)
+        self.integrator = ResultIntegrator()
+        self.update_hotwords(hotwords)
         
         self._initialize_session()
-        self._load_tokens()
         self.warmup()
+
 
     def _initialize_session(self):
         session_opts = onnxruntime.SessionOptions()
@@ -114,6 +121,11 @@ class CTCDecoder:
         if self.blank_id is None:
             self.blank_id = max(self.id2token.keys()) if self.id2token else 0
             
+    def update_hotwords(self, hotwords: List[str]):
+        """动态更新热词列表"""
+        self.corrector.update_hotwords(hotwords)
+        self.radar.update_hotwords(hotwords)
+        logger.info(f"[CTC] 热词已更新 (热词数: {len(hotwords)})")
 
     def warmup(self):
         if self.dml_pad_to <= 0:
@@ -158,7 +170,7 @@ class CTCDecoder:
         # ---- 阶段 3: 雷达扫描 (Top-K 空间) ----
         t0 = time.perf_counter()
         topk_probs = np.exp(topk_log_probs[0])
-        detected_hotwords = self._radar_scan(indices_2d, topk_probs, top1_indices, top_k=top_k)
+        detected_hotwords = self.radar.scan(indices_2d, topk_probs, top_k=top_k, blank_id=self.blank_id)
         t_stats["radar"] = time.perf_counter() - t0
         
         # ---- 阶段 4: 整合 (Greedy + 热词 → 替换) ----
@@ -193,30 +205,18 @@ class CTCDecoder:
         ctc_text, ctc_results, _ = decode_ctc_indices(top1_indices, self.id2token)
         return ctc_text, ctc_results
 
-    def _radar_scan(self, indices_2d: np.ndarray, topk_probs: np.ndarray, top1_indices: np.ndarray, top_k: int = 10) -> List[Dict]:
-        """阶段 3: 热词雷达扫描"""
-        if self.radar is None:
-            return []
-        
-        # 缩减搜索空间并确定网格打印深度
-        sliced_ids = indices_2d[:, :top_k]
-        sliced_probs = topk_probs[:, :top_k]
-        
-        # 仅在非预热/正常解码时通过 display_top_k 触发打印 (如果需要常驻显示可直接设为 top_k)
-        # 显式传递 blank_id，防止雷达误判实音间隙
-        return self.radar.scan(sliced_ids, sliced_probs, top1_indices, blank_id=self.blank_id)
 
     def _integrate(self, ctc_results: List[Token], detected_hotwords: List[Dict]) -> Tuple[str, List[Token]]:
         """阶段 4: 将雷达命中的热词整合进贪婪结果"""
         if self.integrator is None:
             return "".join([r.text for r in ctc_results]), ctc_results
         
-        greedy_fmt = [{"text": r.text, "start": r.start} for r in ctc_results]
+        greedy_fmt = [{"text": r.text, "timestamp": r.timestamp} for r in ctc_results]
         integrated_list = self.integrator.integrate(greedy_fmt, detected_hotwords)
         
         # 将整合结果转回 Token 列表
         new_results = [
-            Token(text=r["text"], start=r["start"], is_hotword=r.get("is_hotword", False))
+            Token(text=r["text"], timestamp=r["timestamp"], is_hotword=r.get("is_hotword", False))
             for r in integrated_list
         ]
         new_text = "".join([r.text for r in new_results])
@@ -230,23 +230,6 @@ class CTCDecoder:
         for _, hw, _ in res.similars: candidates.add(hw)
         return res.text, list(candidates)
 
-    def set_hotword_engine(self, corrector):
-        """
-        [职责下放] 绑定纠错器，并自动初始化内部配套的雷达与整合器。
-        符合高内聚原则：CTCDecoder 自己负责管理其热词功能闭环。
-        """
-        self.corrector = corrector
-        
-        # 内部自治：利用已有的 tokenizer 自动创建配套组件
-        # 延迟导入以避免循环依赖
-        from .radar import HotwordRadar
-        from .integrator import ResultIntegrator
-        
-        all_hotwords = list(corrector.hotwords.keys())
-        self.radar = HotwordRadar(all_hotwords, self.tokenizer)
-        self.integrator = ResultIntegrator()
-        
-        logger.info(f"[CTC] 已绑定热词引擎 (热词数: {len(all_hotwords)})")
 
 
 def load_ctc_tokens(filename):
@@ -306,11 +289,11 @@ def decode_ctc_indices(indices, id2token):
         if not token_text: continue
 
         # Calculate time (只计算起始位置)
-        t_start = max((start * frame_shift_ms) / 1000.0, 0.0)
+        t_timestamp = max((start * frame_shift_ms) / 1000.0, 0.0)
 
         results.append(Token(
             text=token_text,
-            start=t_start
+            timestamp=t_timestamp
         ))
                 
     full_text = "".join([r.text for r in results])
@@ -322,121 +305,4 @@ def decode_ctc_indices(indices, id2token):
         "loop": t_loop
     }
     return full_text, results, timings
-
-def align_timestamps(ctc_results, llm_text):
-    """
-    使用 Needleman-Wunsch 算法对齐 CTC 结果和 LLM 文本
-    只使用起始位置进行匹配
-    """
-    if not ctc_results or not llm_text:
-        return []
-
-    # 1. 展开 CTC 结果为字符级别（只保留起始位置）
-    ctc_chars = []
-    for item in ctc_results:
-        text = item.text
-        start = item.start
-
-        if len(text) > 0:
-            # 假设每个字符占用相同时间间隔
-            char_duration = 0.08  # 默认每个字符约 80ms
-            for i, char in enumerate(text):
-                c_start = start + i * char_duration
-                ctc_chars.append({"char": char, "start": c_start})
-
-    llm_chars = list(llm_text)
-
-    n = len(ctc_chars) + 1
-    m = len(llm_chars) + 1
-
-    # Core DP Matrix
-    score = np.zeros((n, m), dtype=np.float32)
-    # trace: 1=diag, 2=up, 3=left
-    trace = np.zeros((n, m), dtype=np.int8)
-
-    gap_penalty = -1.0
-    match_score = 1.0
-    mismatch_score = -1.0
-
-    # Init margins
-    for i in range(n): score[i][0] = i * gap_penalty
-    for j in range(m): score[0][j] = j * gap_penalty
-
-    # Fill DP
-    for i in range(1, n):
-        for j in range(1, m):
-            char_ctc = ctc_chars[i-1]["char"]
-            char_llm = llm_chars[j-1]
-
-            s_diag = score[i-1][j-1] + (match_score if char_ctc.lower() == char_llm.lower() else mismatch_score)
-            s_up = score[i-1][j] + gap_penalty
-            s_left = score[i][j-1] + gap_penalty
-
-            best = max(s_diag, s_up, s_left)
-            score[i][j] = best
-
-            if best == s_diag: trace[i][j] = 1
-            elif best == s_up: trace[i][j] = 2
-            else: trace[i][j] = 3
-
-    # Traceback
-    llm_alignment = [None] * len(llm_chars)
-    i, j = n - 1, m - 1
-
-    while i > 0 or j > 0:
-        if i > 0 and j > 0 and trace[i][j] == 1:
-            llm_alignment[j-1] = ctc_chars[i-1]
-            i -= 1
-            j -= 1
-        elif i > 0 and (j == 0 or trace[i][j] == 2):
-            i -= 1
-        elif j > 0 and (i == 0 or trace[i][j] == 3):
-            llm_alignment[j-1] = None
-            j -= 1
-
-    # 插值填充未对齐的字符
-    anchors = []
-    for idx, item in enumerate(llm_alignment):
-        if item is not None:
-            anchors.append((idx, item["start"]))
-
-    final_chars = []
-
-    def get_interpolated_start(target_idx):
-        """插值计算起始位置"""
-        prev_a, next_a = None, None
-        for a in anchors:
-            if a[0] < target_idx:
-                prev_a = a
-            elif a[0] > target_idx:
-                next_a = a
-                break
-
-        if prev_a and next_a:
-            p_idx, p_start = prev_a
-            n_idx, n_start = next_a
-
-            # 线性插值
-            total_gap = n_idx - p_idx
-            time_gap = n_start - p_start
-            step = time_gap / total_gap
-
-            relative_step = target_idx - p_idx
-            return p_start + relative_step * step
-        elif prev_a:
-            return prev_a[1] + 0.05  # 向后推一点
-        elif next_a:
-            return max(0, next_a[1] - 0.05)  # 向前推一点
-        else:
-            return 0.0
-
-    for idx, char in enumerate(llm_chars):
-        if llm_alignment[idx]:
-            s = llm_alignment[idx]["start"]
-        else:
-            s = get_interpolated_start(idx)
-        final_chars.append({"char": char, "start": s})
-
-    return final_chars
-
 

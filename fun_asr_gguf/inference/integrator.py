@@ -11,18 +11,18 @@ class ResultIntegrator:
           2. 双指针合并：遍历 greedy token，热词指针只向前推进，O(N+M)
 
         Args:
-            greedy_results:    List[dict] -> [{'text': '...', 'start': ...}, ...]
-            detected_hotwords: List[dict] -> [{'text': '...', 'start': ..., 'end': ..., 'tokens': [...]}, ...]
+            greedy_results:    List[dict] -> [{'text': '...', 'timestamp': ...}, ...]
+            detected_hotwords: List[dict] -> [{'text': '...', 'timestamp': ..., 'end': ..., 'tokens': [...]}, ...]
         Returns:
             final_results: List[dict]
         """
         # --- 步骤 1：过滤重叠热词，保留时间最早的那个 ---
-        # 两个热词重叠的判定：后一个的 start < 前一个的 end
-        detected_hotwords.sort(key=lambda x: x["start"])
+        # 两个热词重叠的判定：后一个的 timestamp < 前一个的 end
+        detected_hotwords.sort(key=lambda x: x["timestamp"])
         active_hotwords = []
         last_end = -1.0
         for hw in detected_hotwords:
-            if hw["start"] >= last_end - 0.02:   # 不重叠，保留
+            if hw["timestamp"] >= last_end - 0.02:   # 不重叠，保留
                 active_hotwords.append(hw)
                 last_end = hw["end"]
             # 否则与前一个重叠，丢弃
@@ -33,10 +33,10 @@ class ResultIntegrator:
         emitted = set()     # 记录已输出的热词索引（按位置去重，防止一个热词被输出多次）
 
         for g in greedy_results:
-            g_start = g["start"]
+            g_timestamp = g["timestamp"]
 
             # 推进热词指针：跳过已完全结束的热词
-            while hw_idx < len(active_hotwords) and active_hotwords[hw_idx]["end"] + 0.02 < g_start:
+            while hw_idx < len(active_hotwords) and active_hotwords[hw_idx]["end"] + 0.02 < g_timestamp:
                 hw_idx += 1
 
             # 判断当前 greedy token 是否落在热词区间内
@@ -44,7 +44,7 @@ class ResultIntegrator:
             if hw_idx < len(active_hotwords):
                 hw = active_hotwords[hw_idx]
                 # 0.02s 冗余处理浮点偏移和 CTC 发散
-                if hw["start"] - 0.02 <= g_start <= hw["end"] + 0.02:
+                if hw["timestamp"] - 0.02 <= g_timestamp <= hw["end"] + 0.02:
                     in_hotword_span = True
                     if hw_idx not in emitted:
                         # 首次进入该热词区间：输出热词块
@@ -55,7 +55,7 @@ class ResultIntegrator:
             if not in_hotword_span:
                 final_results.append({
                     "text": g["text"],
-                    "start": g_start,
+                    "timestamp": g_timestamp,
                     "is_hotword": False
                 })
 
@@ -82,9 +82,9 @@ class ResultIntegrator:
                 curr_search_pos = idx + len(clean_tk)
         
         if not anchors: 
-            anchors.append((0, hw["start"]))
+            anchors.append((0, hw["timestamp"]))
         elif anchors[0][0] != 0:
-            anchors.insert(0, (0, hw["start"]))
+            anchors.insert(0, (0, hw["timestamp"]))
             
         # 2. 根据锚点切割原始文本块
         for i in range(len(anchors)):
@@ -94,7 +94,7 @@ class ResultIntegrator:
             chunk_text = origin_text[start_idx:next_idx]
             chunks.append({
                 "text": chunk_text,
-                "start": start_time,
+                "timestamp": start_time,
                 "is_hotword": True
             })
         return chunks

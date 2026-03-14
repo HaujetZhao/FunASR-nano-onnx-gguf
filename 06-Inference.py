@@ -62,12 +62,18 @@ def main():
     print("ASR 语音识别")
     print("="*70)
 
+    # 准备热词
+    hotwords = []
+    if hotwords_path and os.path.exists(hotwords_path):
+        with open(hotwords_path, "r", encoding="utf-8") as f:
+            hotwords = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+
     config = ASREngineConfig(
         encoder_onnx_path=encoder_onnx_path,
         ctc_onnx_path=ctc_onnx_path,
         decoder_gguf_path=decoder_gguf_path,
         tokens_path=tokens_path,
-        hotwords_path=hotwords_path, 
+        hotwords=hotwords,
         similar_threshold=0.6, 
         max_hotwords=10, 
         enable_ctc=enable_ctc,

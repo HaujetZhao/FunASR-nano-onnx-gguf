@@ -48,9 +48,24 @@ class HotwordRadar:
                 node = node.children[char]
             node.word_indices.append(idx)
 
-    def scan(self, topk_ids, topk_probs, top1_indices, blank_id=0, max_lookahead=15, max_gap=0, verbose=False):
+    def scan(self, full_ids, full_probs, top_k=5, blank_id=0, max_lookahead=15, verbose=False):
+        """
+        [Trie 树加速版] 高性能热词扫描
+        - topk_ids: (T, 100) 原始模型输出
+        - topk_probs: (T, 100) 原始模型输出
+        - top_k: 雷达实际搜索的深度
+        """
         t_scan_start = time.perf_counter()
-        T, K = topk_ids.shape
+        
+        # 内部下放 Top-K 切片逻辑
+        if top_k is not None:
+            full_ids = full_ids[:, :top_k]
+            full_probs = full_probs[:, :top_k]
+            
+        # 从 Top-K 空间的第 0 列提取 Top-1 (Greedy 非空帧判断基准)
+        top1_indices = full_ids[:, 0]
+            
+        T, K = full_ids.shape
         hits = []
 
         for t in range(T):
@@ -62,7 +77,7 @@ class HotwordRadar:
             # 触发：检查当前帧 Top-K 中有哪些 Token 是 Trie 的根起始
             seen_tokens = set()
             for k in range(K):
-                tid = int(topk_ids[t, k])
+                tid = int(full_ids[t, k])
                 tc = self.vocab_lower[tid]
                 if not tc or tc in seen_tokens: continue
                 seen_tokens.add(tc)
@@ -86,7 +101,7 @@ class HotwordRadar:
                     if match_possible:
                         # 启动集中式 DFS，从 node 节点继续往后找
                         frame_hits = self._dfs_trie(
-                            t, k, node, topk_ids, topk_probs, top1_indices, 
+                            t, k, node, full_ids, full_probs, top1_indices, 
                             blank_id, max_lookahead, {}, verbose=verbose
                         )
                         for h in frame_hits:
@@ -98,6 +113,7 @@ class HotwordRadar:
                 print(f"[Radar Profile] 帧 {t:3d} 匹配耗时: {(t_frame_end - t_frame_start)*1000:7.3f} ms")
 
         t_scan_total = (time.perf_counter() - t_scan_start) * 1000
+
         if verbose: print(f"[Radar Profile] 扫描总耗时: {t_scan_total:.3f} ms")
 
         return self._post_process(hits, top1_indices, blank_id)
@@ -252,7 +268,7 @@ class HotwordRadar:
             
             final.append({
                 "text": text,
-                "start": round(h["start_frame"] * 0.060, 3),
+                "timestamp": round(h["start_frame"] * 0.060, 3),
                 "end": round(h["end_frame"] * 0.060, 3),
                 "prob": round(h["prob"], 4),
                 "tokens": [{"token": t, "time": round(f*0.060, 3)} 
