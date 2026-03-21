@@ -167,7 +167,7 @@ class ASREngineConfig:
     onnx_provider: str = 'CPU'  # CPU, CUDA, DML, TensorRT
     ctc_topk: int = 20
     dml_pad_to: int = 30
-    vulkan_enable: bool = True
+    llm_use_gpu: bool = True
     vulkan_force_fp32: bool = False
     hotwords: List[str] = field(default_factory=list)
     verbose: bool = True

@@ -16,7 +16,7 @@ from fun_asr_gguf import FunASREngine, ASREngineConfig
 # ==================== 配置区域 ====================
 
 # 音频文件路径
-audio_file = "input.mp3"
+audio_file = "input500.mp3"
 
 # 语言设置（None=自动检测, "中文", "英文", "日文" 等）
 language = None
@@ -77,7 +77,8 @@ def main():
         similar_threshold=0.6, 
         max_hotwords=10, 
         enable_ctc=enable_ctc,
-        onnx_provider='cuda', 
+        onnx_provider='cpu', 
+        llm_use_gpu=True,
         verbose=verbose,
     )
     engine = FunASREngine(config)
