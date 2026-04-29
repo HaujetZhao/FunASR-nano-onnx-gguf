@@ -1,8 +1,8 @@
 import os
 import onnx
 from onnxruntime.transformers.float16 import convert_float_to_float16
+from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer, DefaultWeightOnlyQuantConfig, QuantFormat
 from onnxruntime.quantization import quantize_dynamic, QuantType
-from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 from pathlib import Path
 from export_config import EXPORT_DIR
 
@@ -30,17 +30,21 @@ def convert_to_fp16(input_path):
 
 def convert_to_int8(input_path):
     output_path = input_path.replace(".fp32.onnx", ".int8.onnx")
-    print(f"\n[INT8] Quantizing {os.path.basename(input_path)} -> {os.path.basename(output_path)}...")
-    
+    print(f"\n[INT8] Weight-only INT8 quantizing {os.path.basename(input_path)} -> {os.path.basename(output_path)}...")
+
     try:
-        quantize_dynamic(
-            input_path,
-            output_path,
-            op_types_to_quantize=["MatMul", "Attention", "Conv"], # 权重量化的核心目标
-            per_channel=True,
-            reduce_range=False,
-            weight_type=QuantType.QUInt8
+        config = DefaultWeightOnlyQuantConfig(
+            bits=8,
+            block_size=128,
+            accuracy_level=4,
+            op_types_to_quantize=("MatMul",),
         )
+        quantizer = MatMulNBitsQuantizer(
+            model=input_path,
+            algo_config=config,
+        )
+        quantizer.process()
+        quantizer.model.save_model_to_file(output_path)
         print(f"   ✅ [Success] Saved INT8 model.")
     except Exception as e:
         print(f"   ❌ [Failed] INT8 quantization error: {e}")
@@ -48,13 +52,17 @@ def convert_to_int8(input_path):
 def convert_to_int4(input_path):
     output_path = input_path.replace(".fp32.onnx", ".int4.onnx")
     print(f"\n[INT4] Quantizing {os.path.basename(input_path)} -> {os.path.basename(output_path)}...")
-    
+
     try:
+        config = DefaultWeightOnlyQuantConfig(
+            bits=4,
+            block_size=16,
+            accuracy_level=0,
+            op_types_to_quantize=("MatMul",),
+        )
         quantizer = MatMulNBitsQuantizer(
             model=input_path,
-            block_size=128,
-            is_symmetric=False,
-            accuracy_level=None
+            algo_config=config,
         )
         quantizer.process()
         quantizer.model.save_model_to_file(output_path)
@@ -84,6 +92,7 @@ def main():
             
         print(f"\n>>> 处理模型: {target}")
         convert_to_fp16(model_path)
+        convert_to_int8(model_path)
         convert_to_int4(model_path)
 
     print("\n--- 所有转换工作已完成 ---")
